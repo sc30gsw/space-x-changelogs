@@ -21,7 +21,6 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
-    "@formisch/react": "^1.2.0",
     "@libsql/client": "^0.18.0",
     "@mantine/core": "^9.7.4",
     "@mantine/hooks": "^9.7.4",
@@ -34,7 +33,6 @@
     "@tanstack/react-start": "1.169.4",
     "drizzle-orm": "^0.45.4",
     "effect": "^4.1.1",
-    "nitro": "3.0.261029-rc",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "valibot": "^1.5.0"
@@ -52,8 +50,7 @@
     "e2e": "^0.22.0",
     "fallow": "3.38.1",
     "lightningcss": "^1.33.0",
-    "oxfmt": "0.74.0",
-    "oxlint": "1.89.0",
+    "nitro": "3.0.261029-rc",
     "postcss": "^8.5.32",
     "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.1",
