@@ -1,6 +1,7 @@
 {
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "devDependencies": {
     "e2e": "^0.22.0",
     "@e2e-dev/web": "^0.15.4",

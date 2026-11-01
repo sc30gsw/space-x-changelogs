@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "create-verification-skill": {
+      "source": "tester-army/e2e",
+      "sourceType": "github",
+      "skillPath": "skills/create-verification-skill/SKILL.md",
+      "computedHash": "39006e845be4efc091556f41726cc72237fd3a97e51b932396dd9d691bb27404"
+    },
     "domain-modeling": {
       "source": "mattpocock/skills",
       "sourceType": "github",
