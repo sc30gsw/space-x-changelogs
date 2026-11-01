@@ -19,10 +19,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - parallel:
-          - name: Typecheck
-            run: pnpm typecheck
-          - name: Lint
-            run: pnpm lint
-          - name: Dead code
-            run: pnpm dead-code --format github-annotations
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Dead code
+        run: pnpm dead-code --format github-annotations
