@@ -4,9 +4,9 @@ import { useDisclosure } from "@mantine/hooks";
 import { spotlight } from "@mantine/spotlight";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { mantine } from "../styles/tokens.stylex";
-import { useWorkspace } from "../data/workspace";
-import { SearchSpotlight } from "./search-spotlight";
+import { mantine } from "../styles/tokens.stylex.ts";
+import { useWorkspace } from "../stores/workspace";
+import { SearchSpotlight } from "../features/search/components/search-spotlight";
 
 const styles = stylex.create({
   main: {

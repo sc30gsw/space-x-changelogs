@@ -17,6 +17,7 @@
     "dead-code": "fallow dead-code --fail-on-issues",
     "test:e2e": "e2e run",
     "verify:ingest": "tsx scripts/verify-entry-url-identity.ts",
+    "check:layout": "tsx scripts/check-bulletproof-layout.ts",
     "doctor": "npx react-doctor@latest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"

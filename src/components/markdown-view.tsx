@@ -1,6 +1,25 @@
 import { Anchor, Code, List, Text, Title } from "@mantine/core";
 import type { ReactNode } from "react";
 
+const headingMarks = ["#", "##", "###"] as const;
+
+type HeadingMarks = (typeof headingMarks)[number];
+
+type MarkdownBlock =
+  | {
+      readonly kind: "heading";
+      readonly key: string;
+      readonly order: 2 | 3 | 4;
+      readonly text: string;
+    }
+  | {
+      readonly kind: "list";
+      readonly key: string;
+      readonly items: readonly { readonly key: string; readonly text: string }[];
+    }
+  | { readonly kind: "code"; readonly key: string; readonly text: string }
+  | { readonly kind: "paragraph"; readonly key: string; readonly text: string };
+
 const renderInline = (source: string, keyPrefix: string): ReactNode[] => {
   const nodes: ReactNode[] = [];
   const pattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`/gu;
@@ -31,51 +50,126 @@ const renderInline = (source: string, keyPrefix: string): ReactNode[] => {
   return nodes;
 };
 
+const isHeadingMarks = (value: string): value is HeadingMarks =>
+  headingMarks.some((marks) => marks === value);
+
+const headingOrder = (marks: HeadingMarks): 2 | 3 | 4 => {
+  switch (marks) {
+    case "#":
+      return 2;
+    case "##":
+      return 3;
+    case "###":
+      return 4;
+    default: {
+      const unreachable: never = marks;
+      return unreachable;
+    }
+  }
+};
+
+const nextKey = (seen: Map<string, number>, kind: string, text: string): string => {
+  const label = `${kind}:${text}`;
+  const count = seen.get(label) ?? 0;
+  seen.set(label, count + 1);
+  return `${label}:${count}`;
+};
+
+const parseBlocks = (text: string): readonly MarkdownBlock[] => {
+  const seen = new Map<string, number>();
+  return text
+    .replaceAll("\r\n", "\n")
+    .split(/\n{2,}/u)
+    .flatMap((block): readonly MarkdownBlock[] => {
+      const lines = block.split("\n");
+      const heading = /^(#{1,3}) (.+)$/u.exec(lines[0] ?? "");
+      if (heading !== null && lines.length === 1 && isHeadingMarks(heading[1] ?? "")) {
+        const marks = heading[1] ?? "";
+        if (!isHeadingMarks(marks)) {
+          return [];
+        }
+        return [
+          {
+            kind: "heading",
+            key: nextKey(seen, "heading", block),
+            order: headingOrder(marks),
+            text: heading[2] ?? "",
+          },
+        ];
+      }
+      if (lines.every((line) => line.startsWith("- "))) {
+        const itemSeen = new Map<string, number>();
+        return [
+          {
+            kind: "list",
+            key: nextKey(seen, "list", block),
+            items: lines.map((line) => {
+              const item = line.slice(2);
+              return { key: nextKey(itemSeen, "item", item), text: item };
+            }),
+          },
+        ];
+      }
+      if (block.startsWith("```")) {
+        return [
+          {
+            kind: "code",
+            key: nextKey(seen, "code", block),
+            text: block.replace(/^```[^\n]*\n?/u, "").replace(/```$/u, ""),
+          },
+        ];
+      }
+      return [
+        {
+          kind: "paragraph",
+          key: nextKey(seen, "paragraph", block),
+          text: block,
+        },
+      ];
+    });
+};
+
+function MarkdownBlockView({ block }: { readonly block: MarkdownBlock }) {
+  switch (block.kind) {
+    case "heading":
+      return (
+        <Title order={block.order} mt="md">
+          {renderInline(block.text, block.key)}
+        </Title>
+      );
+    case "list":
+      return (
+        <List mt="sm">
+          {block.items.map((item) => (
+            <List.Item key={item.key}>{renderInline(item.text, item.key)}</List.Item>
+          ))}
+        </List>
+      );
+    case "code":
+      return (
+        <Code block mt="sm">
+          {block.text}
+        </Code>
+      );
+    case "paragraph":
+      return <Text mt="sm">{renderInline(block.text, block.key)}</Text>;
+    default: {
+      const unreachable: never = block;
+      return unreachable;
+    }
+  }
+}
+
 export function MarkdownView({ text }: { readonly text: string }) {
   if (text.trim().length === 0) {
     return null;
   }
 
-  const blocks = text.replaceAll("\r\n", "\n").split(/\n{2,}/u);
   return (
     <div>
-      {blocks.map((block, index) => {
-        const lines = block.split("\n");
-        const heading = /^(#{1,3}) (.+)$/u.exec(lines[0] ?? "");
-        if (heading !== null && lines.length === 1) {
-          const level = heading[1]?.length ?? 1;
-          const order = level === 1 ? 2 : level === 2 ? 3 : 4;
-          return (
-            <Title key={index} order={order} mt="md">
-              {renderInline(heading[2] ?? "", `h-${index}`)}
-            </Title>
-          );
-        }
-        if (lines.every((line) => line.startsWith("- "))) {
-          return (
-            <List key={index} mt="sm">
-              {lines.map((line, lineIndex) => (
-                <List.Item key={lineIndex}>
-                  {renderInline(line.slice(2), `li-${index}-${lineIndex}`)}
-                </List.Item>
-              ))}
-            </List>
-          );
-        }
-        if (block.startsWith("```")) {
-          const code = block.replace(/^```[^\n]*\n?/u, "").replace(/```$/u, "");
-          return (
-            <Code key={index} block mt="sm">
-              {code}
-            </Code>
-          );
-        }
-        return (
-          <Text key={index} mt="sm">
-            {renderInline(block, `p-${index}`)}
-          </Text>
-        );
-      })}
+      {parseBlocks(text).map((block) => (
+        <MarkdownBlockView key={block.key} block={block} />
+      ))}
     </div>
   );
 }

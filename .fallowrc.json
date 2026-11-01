@@ -1,4 +1,13 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
-  "entry": ["e2e.config.ts", "scripts/e2e-serve.mjs", "src/start.ts", "tests/**/*.e2e.ts"]
+  "entry": [
+    "e2e.config.ts",
+    "scripts/e2e-serve.mjs",
+    "scripts/verify-entry-url-identity.ts",
+    "src/app/router.tsx",
+    "src/app/routes/**/*.tsx",
+    "src/app/start.ts",
+    "tests/**/*.e2e.ts"
+  ],
+  "ignorePatterns": ["src/app/routeTree.gen.ts"]
 }

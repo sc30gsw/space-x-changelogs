@@ -25,7 +25,7 @@ Sync commit: `ba876e3f4c712945f3ad37787fd5750808c9d2a8`
 
 | ファイル | 関数 |
 | --- | --- |
-| `src/domain/submit-entry.ts` | `submitEntry`, `submitInTx`, `overwrite`, `insertUnread`, `withTransaction`, `setCaughtUp`, `insertMemo` |
+| `src/lib/submit-entry.ts` | `submitEntry`, `submitInTx`, `overwrite`, `insertUnread`, `withTransaction`, `setCaughtUp`, `insertMemo` |
 | `scripts/verify-entry-url-identity.ts` | 生成列、逐次の上書き、同じ URL への同時 `submitEntry` |
 
 `overwrite` の `update` は `contentOf` だけを書く。`caughtUp` はそこには無い。`insertUnread` だけが `caughtUp: false` を書く。同じ URL の再送は `findByUrl` の行を上書きする。URL の UNIQUE で insert が負けたときも、勝った行を上書きする。

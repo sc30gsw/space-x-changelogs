@@ -5,14 +5,9 @@ import { createClient } from "@libsql/client";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql/web";
 import { migrate } from "drizzle-orm/libsql/migrator";
-import * as schema from "../src/db/schema.ts";
-import { entries, memos, tracks } from "../src/db/schema.ts";
-import {
-  insertMemo,
-  setCaughtUp,
-  submitEntry,
-  type AppDatabase,
-} from "../src/domain/submit-entry.ts";
+import * as schema from "../src/lib/db/schema.ts";
+import { entries, memos, tracks } from "../src/lib/db/schema.ts";
+import { insertMemo, setCaughtUp, submitEntry, type AppDatabase } from "../src/lib/submit-entry.ts";
 
 const kinds = ["Release", "X Post", "Bot Template", "Pull Request"] as const;
 const scratchRoot = mkdtempSync(join(tmpdir(), "entry-url-identity-"));
