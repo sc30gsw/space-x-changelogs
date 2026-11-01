@@ -1,0 +1,35 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The `parallel:` shorthand makes GitHub drop every workflow on the commit with no error, so the group is spelled out as background steps and a wait.
+      - id: typecheck
+        name: Typecheck
+        run: pnpm typecheck
+        background: true
+      - id: lint
+        name: Lint
+        run: pnpm lint
+        background: true
+      - id: dead-code
+        name: Dead code
+        run: pnpm dead-code --format github-annotations
+        background: true
+      - wait-all:

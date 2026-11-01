@@ -1,4 +1,15 @@
 node_modules/
+dist/
+dist-ssr/
+.output/
+.nitro/
+.tanstack/
+.wrangler/
+.vinxi/
+*.local
+.env
+.DS_Store
+__unconfig*
 .e2e/results/
 .e2e/cache/
 .e2e/sessions/
