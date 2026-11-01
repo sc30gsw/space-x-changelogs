@@ -19,7 +19,7 @@ pnpm verify:ingest
 
 ## Coverage
 
-Sync commit: `532c328b0c2bbf0929889f2b96f042dee6252dbd`
+Sync commit: `cf5003067d0adfc88a6e9ee389e50987e5e88b33`
 
 このコミットで、チェックが次の実装をそのまま呼んでいることを確認した。対象ファイルがこのコミットより後に変わっていたら、先に `pnpm verify:ingest` を実行し、チェックがまだその実装を説明していると確認してから sync commit を進める。ずれを戻すときは `/maintain-formal-verification-skill` を使う。
 
