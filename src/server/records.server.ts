@@ -69,6 +69,14 @@ const requireEntry = (row: unknown): Entry => {
   return parseEntry(row);
 };
 
+const orderById = <Row extends { readonly id: string }>(
+  found: ReadonlyArray<Row>,
+  ids: ReadonlyArray<string>,
+): Array<Row | undefined> => {
+  const byId = new Map(found.map((row) => [row.id, row]));
+  return ids.map((id) => byId.get(id));
+};
+
 const decodeRows = <A>(rows: ReadonlyArray<unknown>, parse: (row: unknown) => A, message: string) =>
   Effect.forEach(rows, (row) =>
     Effect.try({
@@ -115,34 +123,38 @@ export const readEntries = Effect.fn("readEntries")(function* () {
 });
 
 export const insertProjects = Effect.fn("insertProjects")(function* (rows: ReadonlyArray<Project>) {
+  if (rows.length === 0) {
+    return [];
+  }
+
   const { db } = yield* Database;
   return yield* mutate(db, "Could not insert the project.", async (tx) => {
-    const saved: Array<Project> = [];
-    for (const row of rows) {
-      await tx.insert(projects).values({ id: row.id, name: row.name });
-      saved.push(
-        requireProject(await tx.select().from(projects).where(eq(projects.id, row.id)).get()),
-      );
-    }
-    return saved;
+    const ids = rows.map((row) => row.id);
+    await tx.insert(projects).values(rows.map((row) => ({ id: row.id, name: row.name })));
+    const found = await tx.select().from(projects).where(inArray(projects.id, ids));
+    return orderById(found, ids).map(requireProject);
   });
 });
 
 export const updateProjects = Effect.fn("updateProjects")(function* (
   rows: ReadonlyArray<{ readonly id: string; readonly changes: { readonly name?: string } }>,
 ) {
+  if (rows.length === 0) {
+    return [];
+  }
+
   const { db } = yield* Database;
   return yield* mutate(db, "Could not update the project.", async (tx) => {
-    const saved: Array<Project> = [];
+    // Rows share one transaction, so the statements run in order.
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop
     for (const row of rows) {
       if (row.changes.name !== undefined) {
         await tx.update(projects).set({ name: row.changes.name }).where(eq(projects.id, row.id));
       }
-      saved.push(
-        requireProject(await tx.select().from(projects).where(eq(projects.id, row.id)).get()),
-      );
     }
-    return saved;
+    const ids = rows.map((row) => row.id);
+    const found = await tx.select().from(projects).where(inArray(projects.id, ids));
+    return orderById(found, ids).map(requireProject);
   });
 });
 
@@ -160,37 +172,47 @@ export const deleteProjects = Effect.fn("deleteProjects")(function* (ids: Readon
 });
 
 export const insertEntries = Effect.fn("insertEntries")(function* (rows: ReadonlyArray<Entry>) {
+  if (rows.length === 0) {
+    return [];
+  }
+
   const { db } = yield* Database;
   return yield* mutate(db, "Could not insert the entry.", async (tx) => {
-    const saved: Array<Entry> = [];
-    for (const row of rows) {
-      await tx.insert(entries).values({
+    const ids = rows.map((row) => row.id);
+    await tx.insert(entries).values(
+      rows.map((row) => ({
         id: row.id,
         projectId: row.projectId,
         title: row.title,
         body: row.body,
         createdAt: row.createdAt,
-      });
-      saved.push(requireEntry(await tx.select().from(entries).where(eq(entries.id, row.id)).get()));
-    }
-    return saved;
+      })),
+    );
+    const found = await tx.select().from(entries).where(inArray(entries.id, ids));
+    return orderById(found, ids).map(requireEntry);
   });
 });
 
 export const updateEntries = Effect.fn("updateEntries")(function* (
   rows: ReadonlyArray<{ readonly id: string; readonly changes: EntryChanges }>,
 ) {
+  if (rows.length === 0) {
+    return [];
+  }
+
   const { db } = yield* Database;
   return yield* mutate(db, "Could not update the entry.", async (tx) => {
-    const saved: Array<Entry> = [];
+    // Rows share one transaction, so the statements run in order.
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop
     for (const row of rows) {
       const changes = pickEntryChanges(row.changes);
       if (Object.keys(changes).length > 0) {
         await tx.update(entries).set(changes).where(eq(entries.id, row.id));
       }
-      saved.push(requireEntry(await tx.select().from(entries).where(eq(entries.id, row.id)).get()));
     }
-    return saved;
+    const ids = rows.map((row) => row.id);
+    const found = await tx.select().from(entries).where(inArray(entries.id, ids));
+    return orderById(found, ids).map(requireEntry);
   });
 });
 
