@@ -19,6 +19,12 @@ export const Route = createRootRoute({
       { title: "SpaceX changelogs" },
     ],
     links: [
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap",
+      },
       { rel: "stylesheet", href: mantineCoreStyles },
       { rel: "stylesheet", href: mantineSpotlightStyles },
       { rel: "stylesheet", href: mantineTiptapStyles },
@@ -50,7 +56,7 @@ function RootDocument({ children }: { readonly children: ReactNode }) {
         ) : null}
       </head>
       <body>
-        <MantineProvider theme={theme}>
+        <MantineProvider theme={theme} forceColorScheme="light">
           <DataProvider>
             <WorkspaceProvider>{children}</WorkspaceProvider>
           </DataProvider>

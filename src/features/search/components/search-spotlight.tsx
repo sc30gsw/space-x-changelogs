@@ -29,7 +29,7 @@ export function SearchSpotlight() {
     return {
       id: `entry:${entry.id}`,
       label: entry.title,
-      description: `${track?.name ?? "Track"} · ${entry.kind}`,
+      description: `${track?.name ?? "Track"} ${entry.kind}`,
       group: "Entry",
       keywords: [entry.summary, entry.body, memoText, entry.kind, track?.name ?? ""].join(" "),
       onClick: () => {

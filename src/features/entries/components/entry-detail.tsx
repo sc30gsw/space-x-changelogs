@@ -2,6 +2,7 @@ import { Anchor, Button, Group, Modal, Stack, Switch, Text, Title } from "@manti
 import { Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { submitEntryFn } from "../../../api/records";
+import type { EntryWithMemos } from "../../../lib/db/schema";
 import { useWorkspace } from "../../../stores/workspace";
 import type { EntryFormValues } from "../../../types/schemas";
 import {
@@ -39,7 +40,7 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
   }
 
   const track = tracks.find((item) => item.id === entry.trackId);
-  const entryMemos = memos
+  const entryMemos: EntryWithMemos["memos"] = memos
     .filter((memo) => memo.entryId === entry.id)
     .toSorted(
       (left, right) =>
@@ -124,12 +125,15 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
         ) : (
           <Text>Track</Text>
         )}
-        <Text>{entry.caughtUp ? "Caught up" : "Unread"}</Text>
+        <Text c={entry.caughtUp ? "teal" : "signal.8"}>
+          {entry.caughtUp ? "Caught up" : "Unread"}
+        </Text>
       </Group>
       <Title order={1}>{entry.title}</Title>
-      <Text>
-        {entry.kind} · {formatJst(entry.publishedAt)}
-      </Text>
+      <Group gap="sm">
+        <Text c="dimmed">{entry.kind}</Text>
+        <Text c="dimmed">{formatJst(entry.publishedAt)}</Text>
+      </Group>
       <Anchor href={entry.url} target="_blank" rel="noreferrer">
         原文
       </Anchor>

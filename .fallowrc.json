@@ -4,6 +4,7 @@
     "e2e.config.ts",
     "scripts/e2e-serve.mjs",
     "scripts/verify-entry-url-identity.ts",
+    "scripts/verify-entry-lifecycle.ts",
     "src/app/router.tsx",
     "src/app/routes/**/*.tsx",
     "src/app/start.ts",

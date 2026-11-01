@@ -5,11 +5,9 @@ import { createClient } from "@libsql/client";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql/web";
 import { migrate } from "drizzle-orm/libsql/migrator";
-import * as schema from "../src/lib/db/schema.ts";
-import { entries, memos, tracks } from "../src/lib/db/schema.ts";
-import { insertMemo, setCaughtUp, submitEntry, type AppDatabase } from "../src/lib/submit-entry.ts";
-
-const kinds = ["Release", "X Post", "Bot Template", "Pull Request"] as const;
+import { databaseSchema, entries, memos, tracks, type AppDatabase } from "../src/lib/db/schema.ts";
+import { insertMemo, setCaughtUp, submitEntry } from "../src/lib/submit-entry.ts";
+import { entryKinds } from "../src/utils/kinds.ts";
 const scratchRoot = mkdtempSync(join(tmpdir(), "entry-url-identity-"));
 let databaseSerial = 0;
 const urls = [
@@ -60,7 +58,7 @@ const openDb = async (): Promise<AppDatabase> => {
     concurrency: 8,
     timeout: 0,
   });
-  const db = drizzle({ client, schema });
+  const db = drizzle({ client, schema: databaseSchema });
   await migrate(db, { migrationsFolder: "drizzle" });
   await db.run(sql`PRAGMA journal_mode = WAL`);
   await db.run(sql`PRAGMA foreign_keys = ON`);
@@ -158,7 +156,7 @@ const submit = async (
   const returned = await submitEntry(db, {
     id: input.id,
     trackId: input.trackId ?? "track-cursor",
-    kind: kinds[Math.abs(input.title.length) % kinds.length] ?? kinds[0],
+    kind: entryKinds[Math.abs(input.title.length) % entryKinds.length] ?? entryKinds[0],
     title: input.title,
     url: input.url,
     publishedAt: "2026-11-01T00:00:00.000Z",

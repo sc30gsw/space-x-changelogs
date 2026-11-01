@@ -1,15 +1,4 @@
-export type SeedSource = {
-  readonly id: string;
-  readonly label: string;
-  readonly url: string;
-};
-
-export type SeedTrack = {
-  readonly id: string;
-  readonly name: string;
-  readonly slug: string;
-  readonly sources: readonly SeedSource[];
-};
+import type { SeedTrack } from "../../types/schemas";
 
 // Initial Tracks and Sources. Later Tracks are added from the manage screen.
 export const seedTracks: readonly SeedTrack[] = [

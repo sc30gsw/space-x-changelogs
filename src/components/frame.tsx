@@ -1,24 +1,15 @@
-import * as stylex from "@stylexjs/stylex";
-import { AppShell, Badge, Burger, Group, Text, Title } from "@mantine/core";
+import { AppShell, Badge, Box, Burger, Group, Text, Title } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { spotlight } from "@mantine/spotlight";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { mantine } from "../styles/tokens.stylex.ts";
+import type { Entry } from "../types/schemas";
 import { useWorkspace } from "../stores/workspace";
 import { SearchSpotlight } from "../features/search/components/search-spotlight";
 
-const styles = stylex.create({
-  main: {
-    backgroundColor: "light-dark(#f6f1e8, var(--mantine-color-dark-8))",
-    color: mantine.text,
-    minHeight: "100%",
-  },
-});
-
 const unreadCount = (
-  entries: ReadonlyArray<{ readonly trackId: string; readonly caughtUp: boolean }>,
-  trackId: string,
+  entries: ReadonlyArray<Pick<Entry, "trackId" | "caughtUp">>,
+  trackId: Entry["trackId"],
 ): number => {
   let count = 0;
   for (const entry of entries) {
@@ -39,6 +30,11 @@ export function Frame({ children }: { readonly children: ReactNode }) {
       header={{ height: 60 }}
       navbar={{ width: 260, breakpoint: "sm", collapsed: { mobile: !opened } }}
       padding="md"
+      styles={{
+        header: { background: "#f7fafc", borderBottom: "1px solid #c9d5df" },
+        navbar: { background: "#f7fafc", borderRight: "1px solid #c9d5df" },
+        main: { background: "#e7eef2", color: "#1b2836", minHeight: "100%" },
+      }}
     >
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
@@ -60,7 +56,7 @@ export function Frame({ children }: { readonly children: ReactNode }) {
         </Group>
       </AppShell.Header>
       <AppShell.Navbar p="sm">
-        <Text size="xs" c="dimmed" tt="uppercase" fw={700} mb="xs">
+        <Text size="sm" c="dimmed" fw={600} mb="xs">
           Track
         </Text>
         {tracks.map((track) => {
@@ -82,7 +78,7 @@ export function Frame({ children }: { readonly children: ReactNode }) {
               <Group justify="space-between" gap="xs">
                 <span>{track.name}</span>
                 {unread > 0 ? (
-                  <Badge color="orange" variant="filled" aria-hidden="true">
+                  <Badge color="signal" variant="filled" aria-hidden="true">
                     {unread}
                   </Badge>
                 ) : null}
@@ -104,7 +100,9 @@ export function Frame({ children }: { readonly children: ReactNode }) {
           </Text>
         ) : null}
       </AppShell.Navbar>
-      <AppShell.Main {...stylex.props(styles.main)}>{children}</AppShell.Main>
+      <AppShell.Main>
+        <Box maw={720}>{children}</Box>
+      </AppShell.Main>
       <SearchSpotlight />
     </AppShell>
   );

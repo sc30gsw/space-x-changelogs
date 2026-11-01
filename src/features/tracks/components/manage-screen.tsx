@@ -1,11 +1,13 @@
-import { Button, Group, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Button, Divider, Group, Stack, Text, TextInput, Title } from "@mantine/core";
 import { Field, Form, reset, useForm } from "@formisch/react";
 import type { SubmitHandler } from "@formisch/react";
 import { useState } from "react";
 import {
   sourceFormSchema,
   trackFormSchema,
+  type Source,
   type SourceFormValues,
+  type Track,
   type TrackFormValues,
 } from "../../../types/schemas";
 import { useWorkspace } from "../../../stores/workspace";
@@ -66,7 +68,7 @@ function TrackCreateForm() {
   );
 }
 
-function TrackEditor({ trackId }: { readonly trackId: string }) {
+function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
   const { tracks, sources, tracksCollection, sourcesCollection } = useWorkspace();
   const track = tracks.find((item) => item.id === trackId);
   const trackSources = sources
@@ -166,7 +168,7 @@ function TrackEditor({ trackId }: { readonly trackId: string }) {
   );
 }
 
-function SourceEditor({ sourceId }: { readonly sourceId: string }) {
+function SourceEditor({ sourceId }: { readonly sourceId: Source["id"] }) {
   const { sources, sourcesCollection } = useWorkspace();
   const source = sources.find((item) => item.id === sourceId);
   const [label, setLabel] = useState(source?.label ?? "");
@@ -212,7 +214,10 @@ export function ManageScreen() {
       <Text>Track を増やしたあとの Watcher 作成は Grok Bot App 側です。</Text>
       <TrackCreateForm />
       {ordered.map((track) => (
-        <TrackEditor key={track.id} trackId={track.id} />
+        <Stack key={track.id} gap="md">
+          <Divider />
+          <TrackEditor trackId={track.id} />
+        </Stack>
       ))}
     </Stack>
   );

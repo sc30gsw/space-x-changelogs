@@ -2,13 +2,23 @@ import { asc, eq, inArray, sql, type Column, type SQL } from "drizzle-orm";
 import { Effect } from "effect";
 import * as v from "valibot";
 import { pickEntryChanges } from "../utils/changes";
-import type { Entry, EntryChanges, Memo, Source, Track } from "../types/schemas";
+import type {
+  Entry,
+  EntryChanges,
+  EntryUpdate,
+  Memo,
+  MemoUpdate,
+  Source,
+  SourceUpdate,
+  SubmitEntry,
+  Track,
+  TrackUpdate,
+} from "../types/schemas";
 import { entrySchema, memoSchema, sourceSchema, trackSchema } from "../types/schemas";
 import { seedTracks } from "./db/seed-data";
 import { entries, memos, sources, tracks } from "./db/schema";
 import { deleteEntries, setCaughtUp, submitEntry } from "./submit-entry";
-import { isEntryKind } from "../utils/kinds";
-import { instantFromJstLocal, nowInstant } from "../utils/time";
+import { instantFromJstLocal, jstLocalPattern, nowInstant } from "../utils/time";
 import {
   Database,
   DatabaseError,
@@ -289,12 +299,7 @@ export const insertTracks = Effect.fn("insertTracks")(function* (rows: ReadonlyA
   });
 });
 
-export const updateTracks = Effect.fn("updateTracks")(function* (
-  rows: ReadonlyArray<{
-    readonly id: string;
-    readonly changes: { readonly name?: string; readonly slug?: string };
-  }>,
-) {
+export const updateTracks = Effect.fn("updateTracks")(function* (rows: ReadonlyArray<TrackUpdate>) {
   if (rows.length === 0) {
     return [];
   }
@@ -334,10 +339,7 @@ export const insertSources = Effect.fn("insertSources")(function* (rows: Readonl
 });
 
 export const updateSources = Effect.fn("updateSources")(function* (
-  rows: ReadonlyArray<{
-    readonly id: string;
-    readonly changes: { readonly label?: string; readonly url?: string };
-  }>,
+  rows: ReadonlyArray<SourceUpdate>,
 ) {
   if (rows.length === 0) {
     return [];
@@ -357,22 +359,9 @@ export const updateSources = Effect.fn("updateSources")(function* (
 
 const toEntry = (row: unknown): Entry => parseEntry(row);
 
-export const ingestEntry = Effect.fn("ingestEntry")(function* (input: {
-  readonly id?: string;
-  readonly trackId: string;
-  readonly kind: string;
-  readonly title: string;
-  readonly url: string;
-  readonly publishedAt: string;
-  readonly summary: string;
-  readonly body?: string;
-}) {
-  if (!isEntryKind(input.kind)) {
-    return yield* new RecordRejected({ message: "種類が不正です。", cause: input.kind });
-  }
-
+export const ingestEntry = Effect.fn("ingestEntry")(function* (input: SubmitEntry) {
   let publishedAt = input.publishedAt;
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/u.test(publishedAt)) {
+  if (jstLocalPattern.test(publishedAt)) {
     publishedAt = instantFromJstLocal(publishedAt);
   }
 
@@ -406,10 +395,7 @@ const onlyCaughtUp = (changes: EntryChanges): boolean => {
   return keys.length === 1 && keys[0] === "caughtUp" && changes.caughtUp !== undefined;
 };
 
-const applyEntryUpdate = Effect.fnUntraced(function* (
-  db: Db,
-  row: { readonly id: string; readonly changes: EntryChanges },
-) {
+const applyEntryUpdate = Effect.fnUntraced(function* (db: Db, row: EntryUpdate) {
   const changes = pickEntryChanges(row.changes);
   if (onlyCaughtUp(changes) && changes.caughtUp !== undefined) {
     const caughtUp = changes.caughtUp;
@@ -442,7 +428,7 @@ const applyEntryUpdate = Effect.fnUntraced(function* (
 });
 
 export const updateEntries = Effect.fn("updateEntries")(function* (
-  rows: ReadonlyArray<{ readonly id: string; readonly changes: EntryChanges }>,
+  rows: ReadonlyArray<EntryUpdate>,
 ) {
   if (rows.length === 0) {
     return [];
@@ -483,9 +469,7 @@ export const insertMemos = Effect.fn("insertMemos")(function* (rows: ReadonlyArr
   });
 });
 
-export const updateMemos = Effect.fn("updateMemos")(function* (
-  rows: ReadonlyArray<{ readonly id: string; readonly changes: { readonly body?: string } }>,
-) {
+export const updateMemos = Effect.fn("updateMemos")(function* (rows: ReadonlyArray<MemoUpdate>) {
   if (rows.length === 0) {
     return [];
   }

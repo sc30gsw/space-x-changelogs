@@ -1,25 +1,10 @@
 import { eq, inArray, sql } from "drizzle-orm";
-import type { LibSQLDatabase } from "drizzle-orm/libsql";
-import * as schema from "./db/schema";
-import { entries, memos } from "./db/schema";
+import type { CaughtUpWrite, MemoWrite, SubmitEntry } from "../types/schemas";
+import { type AppDatabase, type Entry, type Memo, entries, memos } from "./db/schema";
 
-export type EntryRow = typeof entries.$inferSelect;
-export type MemoRow = typeof memos.$inferSelect;
+type Tx = Parameters<Parameters<AppDatabase["transaction"]>[0]>[0];
 
-type Database = LibSQLDatabase<typeof schema>;
-type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
-
-export type SubmitEntryInput = {
-  readonly id?: string;
-  readonly trackId: string;
-  readonly kind: string;
-  readonly title: string;
-  readonly url: string;
-  readonly publishedAt: string;
-  readonly summary: string;
-  readonly body: string;
-  readonly now: string;
-};
+export type SubmitEntryInput = SubmitEntry & { readonly now: string };
 
 const errorText = (error: unknown): string => {
   if (!(error instanceof Error)) {
@@ -54,7 +39,7 @@ const contentOf = (input: SubmitEntryInput) => ({
   updatedAt: input.now,
 });
 
-const requireRow = async (tx: Tx, id: string): Promise<EntryRow> => {
+const requireRow = async (tx: Tx, id: string): Promise<Entry> => {
   const rows = await tx.select().from(entries).where(eq(entries.id, id)).limit(1);
   const row = rows[0];
   if (row === undefined) {
@@ -64,7 +49,7 @@ const requireRow = async (tx: Tx, id: string): Promise<EntryRow> => {
   return row;
 };
 
-const findByUrl = async (tx: Tx, url: string): Promise<EntryRow | undefined> => {
+const findByUrl = async (tx: Tx, url: string): Promise<Entry | undefined> => {
   const rows = await tx.select().from(entries).where(eq(entries.url, url)).limit(1);
   return rows[0];
 };
@@ -72,16 +57,12 @@ const findByUrl = async (tx: Tx, url: string): Promise<EntryRow | undefined> => 
 // Overwrite the Entry that already owns this 原文 URL.
 // id, caughtUp, and Memo rows stay. A resubmit must not create a second Entry
 // and must not move a Caught up Entry back to Unread.
-const overwrite = async (
-  tx: Tx,
-  existing: EntryRow,
-  input: SubmitEntryInput,
-): Promise<EntryRow> => {
+const overwrite = async (tx: Tx, existing: Entry, input: SubmitEntryInput): Promise<Entry> => {
   await tx.update(entries).set(contentOf(input)).where(eq(entries.id, existing.id));
   return requireRow(tx, existing.id);
 };
 
-const insertUnread = async (tx: Tx, id: string, input: SubmitEntryInput): Promise<EntryRow> => {
+const insertUnread = async (tx: Tx, id: string, input: SubmitEntryInput): Promise<Entry> => {
   await tx.insert(entries).values({
     id,
     trackId: input.trackId,
@@ -98,7 +79,7 @@ const insertUnread = async (tx: Tx, id: string, input: SubmitEntryInput): Promis
   return requireRow(tx, id);
 };
 
-const submitInTx = async (tx: Tx, input: SubmitEntryInput): Promise<EntryRow> => {
+const submitInTx = async (tx: Tx, input: SubmitEntryInput): Promise<Entry> => {
   const owner = await findByUrl(tx, input.url);
   if (owner !== undefined) {
     return overwrite(tx, owner, input);
@@ -150,14 +131,14 @@ const submitInTx = async (tx: Tx, input: SubmitEntryInput): Promise<EntryRow> =>
 // libsql's busy timeout blocks the thread that has to commit the other write.
 // Queue writers on this client, and if sqlite still reports a lock, yield so the
 // holder can commit before the next attempt.
-const writeQueues = new WeakMap<Database, Promise<unknown>>();
+const writeQueues = new WeakMap<AppDatabase, Promise<unknown>>();
 
 const yieldToHolder = (attempt: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, 5 * attempt);
   });
 
-const once = async <A>(db: Database, run: (tx: Tx) => Promise<A>): Promise<A> => {
+const once = async <A>(db: AppDatabase, run: (tx: Tx) => Promise<A>): Promise<A> => {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     try {
       return await db.transaction(async (tx) => {
@@ -175,7 +156,7 @@ const once = async <A>(db: Database, run: (tx: Tx) => Promise<A>): Promise<A> =>
   throw new Error("Entry write did not finish.");
 };
 
-const withTransaction = async <A>(db: Database, run: (tx: Tx) => Promise<A>): Promise<A> => {
+const withTransaction = async <A>(db: AppDatabase, run: (tx: Tx) => Promise<A>): Promise<A> => {
   const previous = writeQueues.get(db) ?? Promise.resolve();
   const result = previous
     .then(
@@ -187,13 +168,10 @@ const withTransaction = async <A>(db: Database, run: (tx: Tx) => Promise<A>): Pr
   return result;
 };
 
-export const submitEntry = (db: Database, input: SubmitEntryInput): Promise<EntryRow> =>
+export const submitEntry = (db: AppDatabase, input: SubmitEntryInput): Promise<Entry> =>
   withTransaction(db, (tx) => submitInTx(tx, input));
 
-export const setCaughtUp = (
-  db: Database,
-  input: { readonly id: string; readonly caughtUp: boolean; readonly now: string },
-): Promise<EntryRow> =>
+export const setCaughtUp = (db: AppDatabase, input: CaughtUpWrite): Promise<Entry> =>
   withTransaction(db, async (tx) => {
     await tx
       .update(entries)
@@ -202,15 +180,7 @@ export const setCaughtUp = (
     return requireRow(tx, input.id);
   });
 
-export const insertMemo = (
-  db: Database,
-  input: {
-    readonly id: string;
-    readonly entryId: string;
-    readonly body: string;
-    readonly now: string;
-  },
-): Promise<MemoRow> =>
+export const insertMemo = (db: AppDatabase, input: MemoWrite): Promise<Memo> =>
   withTransaction(db, async (tx) => {
     await tx.insert(memos).values({
       id: input.id,
@@ -228,7 +198,7 @@ export const insertMemo = (
     return row;
   });
 
-export const deleteEntries = (db: Database, ids: readonly string[]): Promise<void> => {
+export const deleteEntries = (db: AppDatabase, ids: readonly string[]): Promise<void> => {
   if (ids.length === 0) {
     return Promise.resolve();
   }
@@ -238,5 +208,3 @@ export const deleteEntries = (db: Database, ids: readonly string[]): Promise<voi
     await tx.delete(entries).where(inArray(entries.id, [...ids]));
   });
 };
-
-export type AppDatabase = Database;

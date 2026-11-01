@@ -20,6 +20,54 @@ type MarkdownBlock =
   | { readonly kind: "code"; readonly key: string; readonly text: string }
   | { readonly kind: "paragraph"; readonly key: string; readonly text: string };
 
+type InlineSpan =
+  | { readonly kind: "link"; readonly label: string; readonly href: string }
+  | { readonly kind: "strong"; readonly text: string }
+  | { readonly kind: "emphasis"; readonly text: string }
+  | { readonly kind: "code"; readonly text: string };
+
+const inlineSpan = (match: RegExpMatchArray): InlineSpan | undefined => {
+  const label = match[1];
+  const href = match[2];
+  const strong = match[3];
+  const emphasis = match[4];
+  const code = match[5];
+  if (label !== undefined && href !== undefined) {
+    return { kind: "link", label, href };
+  }
+  if (strong !== undefined) {
+    return { kind: "strong", text: strong };
+  }
+  if (emphasis !== undefined) {
+    return { kind: "emphasis", text: emphasis };
+  }
+  if (code !== undefined) {
+    return { kind: "code", text: code };
+  }
+  return undefined;
+};
+
+const inlineNode = (span: InlineSpan, key: string): ReactNode => {
+  switch (span.kind) {
+    case "link":
+      return (
+        <Anchor key={key} href={span.href} target="_blank" rel="noreferrer">
+          {span.label}
+        </Anchor>
+      );
+    case "strong":
+      return <strong key={key}>{span.text}</strong>;
+    case "emphasis":
+      return <em key={key}>{span.text}</em>;
+    case "code":
+      return <Code key={key}>{span.text}</Code>;
+    default: {
+      const unreachable: never = span;
+      return unreachable;
+    }
+  }
+};
+
 const renderInline = (source: string, keyPrefix: string): ReactNode[] => {
   const nodes: ReactNode[] = [];
   const pattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`/gu;
@@ -29,18 +77,9 @@ const renderInline = (source: string, keyPrefix: string): ReactNode[] => {
     if (index > cursor) {
       nodes.push(source.slice(cursor, index));
     }
-    if (match[1] !== undefined && match[2] !== undefined) {
-      nodes.push(
-        <Anchor key={`${keyPrefix}-${index}`} href={match[2]} target="_blank" rel="noreferrer">
-          {match[1]}
-        </Anchor>,
-      );
-    } else if (match[3] !== undefined) {
-      nodes.push(<strong key={`${keyPrefix}-${index}`}>{match[3]}</strong>);
-    } else if (match[4] !== undefined) {
-      nodes.push(<em key={`${keyPrefix}-${index}`}>{match[4]}</em>);
-    } else if (match[5] !== undefined) {
-      nodes.push(<Code key={`${keyPrefix}-${index}`}>{match[5]}</Code>);
+    const span = inlineSpan(match);
+    if (span !== undefined) {
+      nodes.push(inlineNode(span, `${keyPrefix}-${index}`));
     }
     cursor = index + match[0].length;
   }

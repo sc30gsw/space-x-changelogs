@@ -2,6 +2,7 @@ import { Anchor, Button, Checkbox, Group, Select, Stack, Text, Title } from "@ma
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { submitEntryFn } from "../../../api/records";
+import type { TrackWithSources } from "../../../lib/db/schema";
 import { useWorkspace } from "../../../stores/workspace";
 import type { EntryFormValues } from "../../../types/schemas";
 import { entryKinds, entryMatchesKind, isKindFilter, type KindFilter } from "../../../utils/kinds";
@@ -34,7 +35,7 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
     );
   }
 
-  const trackSources = sources
+  const trackSources: TrackWithSources["sources"] = sources
     .filter((source) => source.trackId === track.id)
     .toSorted((left, right) => left.position - right.position || left.id.localeCompare(right.id));
   const trackEntries = entries
@@ -128,15 +129,28 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
             justify="space-between"
             wrap="nowrap"
             align="flex-start"
+            pl="sm"
+            style={{
+              borderLeft: entry.caughtUp
+                ? "3px solid transparent"
+                : "3px solid var(--mantine-color-signal-7)",
+            }}
           >
             <Stack gap={2}>
               <Link to="/entries/$entryId" params={{ entryId: entry.id }}>
                 {entry.title}
               </Link>
-              <Text size="sm" c="dimmed">
-                {entry.kind} · {formatJst(entry.publishedAt)} ·{" "}
-                {entry.caughtUp ? "Caught up" : "Unread"}
-              </Text>
+              <Group gap="sm">
+                <Text size="sm" c="dimmed">
+                  {entry.kind}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {formatJst(entry.publishedAt)}
+                </Text>
+                <Text size="sm" c={entry.caughtUp ? "teal" : "signal.8"}>
+                  {entry.caughtUp ? "Caught up" : "Unread"}
+                </Text>
+              </Group>
               <Text size="sm">{entry.summary}</Text>
             </Stack>
             <Checkbox
@@ -150,6 +164,7 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
           </Group>
         ))}
       </Stack>
+      {trackEntries.length === 0 ? <Text>この絞り込みに Entry はありません。</Text> : null}
       <section aria-label="Entry を追加">
         <Title order={2} size="h3" mb="sm">
           Entry を追加

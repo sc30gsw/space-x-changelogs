@@ -1,13 +1,12 @@
 import { createClient as createNodeClient } from "@libsql/client";
 import { createClient } from "@libsql/client/web";
 import { sql } from "drizzle-orm";
-import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { drizzle } from "drizzle-orm/libsql/web";
 import { Context, Effect, Layer, Schema } from "effect";
-import * as schema from "./schema";
+import { databaseSchema, type AppDatabase } from "./schema";
 
-export type Db = LibSQLDatabase<typeof schema>;
+export type Db = AppDatabase;
 
 class DatabaseUnconfigured extends Schema.TaggedError<DatabaseUnconfigured>()(
   "DatabaseUnconfigured",
@@ -57,27 +56,71 @@ const migrateLocal = (db: Db) =>
 
 // A native busy timeout blocks the thread that must commit the other write.
 // Fail immediately and let the Entry write retry after yielding.
+type ClientChoice =
+  | { readonly kind: "local" }
+  | { readonly kind: "unconfigured" }
+  | { readonly kind: "remote"; readonly authToken: string };
+
+const clientChoice = (url: string, authToken: string | undefined): ClientChoice => {
+  if (isLocalUrl(url)) {
+    return { kind: "local" };
+  }
+  if (authToken === undefined) {
+    return { kind: "unconfigured" };
+  }
+  return { kind: "remote", authToken };
+};
+
+type PrepareChoice =
+  | { readonly kind: "memory" }
+  | { readonly kind: "file"; readonly url: string }
+  | { readonly kind: "ready" };
+
+const prepareChoice = (url: string): PrepareChoice => {
+  if (url === ":memory:") {
+    return { kind: "memory" };
+  }
+  if (isLocalUrl(url) && !migratedUrls.has(url)) {
+    return { kind: "file", url };
+  }
+  return { kind: "ready" };
+};
+
 const openClient = Effect.fn("Database.openClient")(function* (
   url: string,
   authToken: string | undefined,
 ) {
-  if (isLocalUrl(url)) {
-    return createNodeClient({ url, timeout: 0 });
+  const choice = clientChoice(url, authToken);
+  switch (choice.kind) {
+    case "local":
+      return createNodeClient({ url, timeout: 0 });
+    case "unconfigured":
+      return yield* new DatabaseUnconfigured();
+    case "remote":
+      return createClient({ url, authToken: choice.authToken });
+    default: {
+      const unreachable: never = choice;
+      return unreachable;
+    }
   }
-
-  if (authToken === undefined) {
-    return yield* new DatabaseUnconfigured();
-  }
-
-  return createClient({ url, authToken });
 });
 
 const prepare = Effect.fn("Database.prepare")(function* (db: Db, url: string) {
-  if (url === ":memory:") {
-    yield* migrateLocal(db);
-  } else if (isLocalUrl(url) && !migratedUrls.has(url)) {
-    yield* migrateLocal(db);
-    migratedUrls.add(url);
+  const choice = prepareChoice(url);
+  switch (choice.kind) {
+    case "memory":
+      yield* migrateLocal(db);
+      break;
+    case "file":
+      yield* migrateLocal(db);
+      migratedUrls.add(choice.url);
+      break;
+    case "ready":
+      break;
+    default: {
+      const unreachable: never = choice;
+      return unreachable;
+    }
   }
 
   yield* enableForeignKeys(db);
@@ -101,7 +144,7 @@ export class Database extends Context.Service<Database, { readonly db: Db }>()(
       }
 
       const client = yield* openClient(url, token);
-      const db = drizzle({ client, schema });
+      const db = drizzle({ client, schema: databaseSchema });
       yield* prepare(db, url);
       return Database.of({ db });
     }),
