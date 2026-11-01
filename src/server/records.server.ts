@@ -1,51 +1,27 @@
-import { createServerOnlyFn } from "@tanstack/react-start";
-import { connect, type Connection } from "@tursodatabase/serverless";
+import { and, asc, desc, eq, gt, gte, like, lt, lte, type SQL, sql } from "drizzle-orm";
+import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { Effect } from "effect";
 import * as v from "valibot";
+import { entries, projects } from "../db/schema";
 import type { Entry, EntryChanges, EntrySubset, Project } from "../data/schemas";
 import { entrySchema, projectSchema } from "../data/schemas";
 import { HttpFailure } from "./boundary.server";
+import { Database, type Db } from "./db.server";
 
 const entryColumns = {
-  id: "id",
-  projectId: "project_id",
-  title: "title",
-  body: "body",
-  createdAt: "created_at",
+  id: entries.id,
+  projectId: entries.projectId,
+  title: entries.title,
+  body: entries.body,
+  createdAt: entries.createdAt,
 } as const;
 
 type EntryField = keyof typeof entryColumns;
 
-const openTurso = createServerOnlyFn((): Connection | null => {
-  const url = process.env.TURSO_DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
-  if (
-    typeof url !== "string" ||
-    url.length === 0 ||
-    typeof authToken !== "string" ||
-    authToken.length === 0
-  ) {
-    return null;
-  }
-
-  return connect({ url, authToken });
-});
-
-const openConfigured = Effect.gen(function* () {
-  const connection = openTurso();
-  if (connection === null) {
-    return yield* new HttpFailure({
-      status: 500,
-      message: "Turso is not configured. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.",
-    });
-  }
-
-  return connection;
-});
-
-const query = <A>(task: () => Promise<A>, message: string) =>
+// Drizzle builders are thenables, not Promises, so await them inside a real Promise.
+const query = <A>(task: () => PromiseLike<A>, message: string) =>
   Effect.tryPromise({
-    try: task,
+    try: async () => await task(),
     catch: (cause) => new HttpFailure({ status: 503, message, cause }),
   });
 
@@ -55,13 +31,15 @@ const decode = <A>(schema: v.GenericSchema<A>, row: unknown, message: string) =>
     catch: (cause) => new HttpFailure({ status: 500, message, cause }),
   });
 
-const ensureSchema = (connection: Connection) =>
+// The scaffold tables are still created at runtime. drizzle-kit migrations arrive with the
+// production schema; until then `db:generate` / `db:migrate` have nothing to apply.
+const ensureSchema = (db: Db) =>
   query(async () => {
-    await connection.run(`CREATE TABLE IF NOT EXISTS projects (
+    await db.run(sql`CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL
     )`);
-    await connection.run(`CREATE TABLE IF NOT EXISTS entries (
+    await db.run(sql`CREATE TABLE IF NOT EXISTS entries (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -70,30 +48,11 @@ const ensureSchema = (connection: Connection) =>
     )`);
   }, "Could not prepare the Turso schema.");
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const projectFromRow = (row: unknown): unknown => {
-  if (!isRecord(row)) {
-    return row;
-  }
-
-  return { id: row.id, name: row.name };
-};
-
-const entryFromRow = (row: unknown): unknown => {
-  if (!isRecord(row)) {
-    return row;
-  }
-
-  return {
-    id: row.id,
-    projectId: row.project_id,
-    title: row.title,
-    body: row.body,
-    createdAt: row.created_at,
-  };
-};
+const openDb = Effect.gen(function* () {
+  const { db } = yield* Database;
+  yield* ensureSchema(db);
+  return db;
+});
 
 const entryField = (field: ReadonlyArray<string | number>): EntryField | undefined => {
   const name = field.at(-1);
@@ -116,31 +75,35 @@ const entryField = (field: ReadonlyArray<string | number>): EntryField | undefin
   }
 };
 
-const comparisonSql = (operator: string): string | undefined => {
+const comparison = (
+  operator: string,
+  column: AnySQLiteColumn,
+  value: string | number,
+): SQL | undefined => {
   switch (operator) {
     case "eq":
-      return "=";
+      return eq(column, value);
     case "gt":
-      return ">";
+      return gt(column, value);
     case "gte":
-      return ">=";
+      return gte(column, value);
     case "lt":
-      return "<";
+      return lt(column, value);
     case "lte":
-      return "<=";
+      return lte(column, value);
     case "like":
-      return "LIKE";
+      return like(column, String(value));
     default:
       return undefined;
   }
 };
 
-const sqlDirection = (direction: "asc" | "desc"): "ASC" | "DESC" => {
+const ordering = (direction: "asc" | "desc", column: AnySQLiteColumn): SQL => {
   switch (direction) {
     case "asc":
-      return "ASC";
+      return asc(column);
     case "desc":
-      return "DESC";
+      return desc(column);
     default: {
       const unreachable: never = direction;
       return unreachable;
@@ -166,24 +129,26 @@ const nonNegativeInt = (value: number | undefined, label: string) =>
 
 const compileEntrySubset = (subset: EntrySubset) =>
   Effect.gen(function* () {
-    const clauses: Array<string> = [];
-    const args: Array<string | number> = [];
+    const clauses: Array<SQL> = [];
 
     for (const filter of subset.filters) {
       const field = entryField(filter.field);
-      const operator = comparisonSql(filter.operator);
-      if (field === undefined || operator === undefined || filter.value === undefined) {
+      const clause =
+        field === undefined || filter.value === undefined
+          ? undefined
+          : comparison(filter.operator, entryColumns[field], filter.value);
+      if (clause === undefined) {
         return yield* new HttpFailure({
           status: 400,
           message: "The entry API does not support that subset predicate yet.",
         });
       }
 
-      clauses.push(`${entryColumns[field]} ${operator} ?`);
-      args.push(filter.value);
+      clauses.push(clause);
     }
 
-    const order: Array<string> = [];
+    const order: Array<SQL> = [];
+    let orderedById = false;
     for (const sort of subset.sorts) {
       const field = entryField(sort.field);
       if (field === undefined) {
@@ -193,64 +158,28 @@ const compileEntrySubset = (subset: EntrySubset) =>
         });
       }
 
-      order.push(`${entryColumns[field]} ${sqlDirection(sort.direction)}`);
+      orderedById = orderedById || field === "id";
+      order.push(ordering(sort.direction, entryColumns[field]));
     }
 
-    if (!order.some((part) => part.startsWith("id "))) {
-      order.push("id ASC");
+    if (!orderedById) {
+      order.push(asc(entries.id));
     }
 
     const limit = yield* nonNegativeInt(subset.limit, "limit");
     const offset = yield* nonNegativeInt(subset.offset, "offset");
-    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    const paging: Array<string> = [];
-    if (limit !== undefined) {
-      paging.push("LIMIT ?");
-      args.push(limit);
-    }
-    if (offset !== undefined) {
-      paging.push("OFFSET ?");
-      args.push(offset);
-    }
 
-    return {
-      sql: `SELECT id, project_id, title, body, created_at FROM entries ${where} ORDER BY ${order.join(", ")} ${paging.join(" ")}`,
-      args,
-    };
+    return { where: clauses.length > 0 ? and(...clauses) : undefined, order, limit, offset };
   });
 
 const decodeProjects = (rows: ReadonlyArray<unknown>) =>
   Effect.forEach(rows, (row) =>
-    decode(
-      projectSchema,
-      projectFromRow(row),
-      "Turso returned a project row the collection schema rejected.",
-    ),
+    decode(projectSchema, row, "Turso returned a project row the collection schema rejected."),
   );
 
 const decodeEntries = (rows: ReadonlyArray<unknown>) =>
   Effect.forEach(rows, (row) =>
-    decode(
-      entrySchema,
-      entryFromRow(row),
-      "Turso returned an entry row the collection schema rejected.",
-    ),
-  );
-
-const readProjectRow = (connection: Connection, id: string) =>
-  query(
-    () => connection.get("SELECT id, name FROM projects WHERE id = ?", id),
-    "Could not read the project.",
-  );
-
-const readEntryRow = (connection: Connection, id: string) =>
-  query(
-    () =>
-      connection.get(
-        "SELECT id, project_id, title, body, created_at FROM entries WHERE id = ?",
-        id,
-      ),
-    "Could not read the entry.",
+    decode(entrySchema, row, "Turso returned an entry row the collection schema rejected."),
   );
 
 const requireProject = (row: unknown) =>
@@ -259,11 +188,7 @@ const requireProject = (row: unknown) =>
       return yield* new HttpFailure({ status: 404, message: "Project was not found." });
     }
 
-    return yield* decode(
-      projectSchema,
-      projectFromRow(row),
-      "Stored project did not match the collection schema.",
-    );
+    return yield* decode(projectSchema, row, "Stored project did not match the collection schema.");
   });
 
 const requireEntry = (row: unknown) =>
@@ -272,31 +197,34 @@ const requireEntry = (row: unknown) =>
       return yield* new HttpFailure({ status: 404, message: "Entry was not found." });
     }
 
-    return yield* decode(
-      entrySchema,
-      entryFromRow(row),
-      "Stored entry did not match the collection schema.",
-    );
+    return yield* decode(entrySchema, row, "Stored entry did not match the collection schema.");
   });
 
+const readProjectRow = (db: Db, id: string) =>
+  query(
+    () => db.select().from(projects).where(eq(projects.id, id)).get(),
+    "Could not read the project.",
+  );
+
+const readEntryRow = (db: Db, id: string) =>
+  query(
+    () => db.select().from(entries).where(eq(entries.id, id)).get(),
+    "Could not read the entry.",
+  );
+
 export const readProjects = Effect.fn("readProjects")(function* () {
-  const connection = yield* openConfigured;
-  yield* ensureSchema(connection);
+  const db = yield* openDb;
   const rows = yield* query(
-    () => connection.all("SELECT id, name FROM projects ORDER BY name, id"),
+    () => db.select().from(projects).orderBy(asc(projects.name), asc(projects.id)),
     "Could not read projects.",
   );
   return yield* decodeProjects(rows);
 });
 
 export const readEntries = Effect.fn("readEntries")(function* () {
-  const connection = yield* openConfigured;
-  yield* ensureSchema(connection);
+  const db = yield* openDb;
   const rows = yield* query(
-    () =>
-      connection.all(
-        "SELECT id, project_id, title, body, created_at FROM entries ORDER BY created_at, id",
-      ),
+    () => db.select().from(entries).orderBy(asc(entries.createdAt), asc(entries.id)),
     "Could not read entries.",
   );
   return yield* decodeEntries(rows);
@@ -305,27 +233,30 @@ export const readEntries = Effect.fn("readEntries")(function* () {
 export const readEntriesMatching = Effect.fn("readEntriesMatching")(function* (
   subset: EntrySubset,
 ) {
-  const connection = yield* openConfigured;
-  yield* ensureSchema(connection);
+  const db = yield* openDb;
   const statement = yield* compileEntrySubset(subset);
-  const rows = yield* query(
-    () => connection.all(statement.sql, ...statement.args),
-    "Could not read the requested entries.",
-  );
+  const rows = yield* query(() => {
+    const base = db
+      .select()
+      .from(entries)
+      .where(statement.where)
+      .orderBy(...statement.order);
+    const limited = statement.limit === undefined ? base : base.limit(statement.limit);
+    return statement.offset === undefined ? limited : limited.offset(statement.offset);
+  }, "Could not read the requested entries.");
   return yield* decodeEntries(rows);
 });
 
 export const insertProjects = Effect.fn("insertProjects")(function* (rows: ReadonlyArray<Project>) {
-  const connection = yield* openConfigured;
-  yield* ensureSchema(connection);
+  const db = yield* openDb;
   const saved: Array<Project> = [];
 
   for (const row of rows) {
     yield* query(
-      () => connection.run("INSERT INTO projects (id, name) VALUES (?, ?)", row.id, row.name),
+      () => db.insert(projects).values({ id: row.id, name: row.name }),
       "Could not insert the project.",
     );
-    saved.push(yield* requireProject(yield* readProjectRow(connection, row.id)));
+    saved.push(yield* requireProject(yield* readProjectRow(db, row.id)));
   }
 
   return saved;
@@ -334,79 +265,71 @@ export const insertProjects = Effect.fn("insertProjects")(function* (rows: Reado
 export const updateProjects = Effect.fn("updateProjects")(function* (
   rows: ReadonlyArray<{ readonly id: string; readonly changes: { readonly name?: string } }>,
 ) {
-  const connection = yield* openConfigured;
-  yield* ensureSchema(connection);
+  const db = yield* openDb;
   const saved: Array<Project> = [];
 
   for (const row of rows) {
     if (row.changes.name !== undefined) {
+      const name = row.changes.name;
       yield* query(
-        () => connection.run("UPDATE projects SET name = ? WHERE id = ?", row.changes.name, row.id),
+        () => db.update(projects).set({ name }).where(eq(projects.id, row.id)),
         "Could not update the project.",
       );
     }
 
-    saved.push(yield* requireProject(yield* readProjectRow(connection, row.id)));
+    saved.push(yield* requireProject(yield* readProjectRow(db, row.id)));
   }
 
   return saved;
 });
 
 export const deleteProjects = Effect.fn("deleteProjects")(function* (ids: ReadonlyArray<string>) {
-  const connection = yield* openConfigured;
-  yield* ensureSchema(connection);
+  const db = yield* openDb;
 
   for (const id of ids) {
     yield* query(
-      () => connection.run("DELETE FROM projects WHERE id = ?", id),
+      () => db.delete(projects).where(eq(projects.id, id)),
       "Could not delete the project.",
     );
   }
 });
 
-const entryAssignments = (changes: EntryChanges): { sql: string; args: Array<string> } => {
-  const assignments: Array<string> = [];
-  const args: Array<string> = [];
+const entryAssignments = (changes: EntryChanges): Partial<typeof entries.$inferInsert> => {
+  const assignments: Partial<typeof entries.$inferInsert> = {};
 
   if (changes.projectId !== undefined) {
-    assignments.push("project_id = ?");
-    args.push(changes.projectId);
+    assignments.projectId = changes.projectId;
   }
   if (changes.title !== undefined) {
-    assignments.push("title = ?");
-    args.push(changes.title);
+    assignments.title = changes.title;
   }
   if (changes.body !== undefined) {
-    assignments.push("body = ?");
-    args.push(changes.body);
+    assignments.body = changes.body;
   }
   if (changes.createdAt !== undefined) {
-    assignments.push("created_at = ?");
-    args.push(changes.createdAt);
+    assignments.createdAt = changes.createdAt;
   }
 
-  return { sql: assignments.join(", "), args };
+  return assignments;
 };
 
 export const insertEntries = Effect.fn("insertEntries")(function* (rows: ReadonlyArray<Entry>) {
-  const connection = yield* openConfigured;
-  yield* ensureSchema(connection);
+  const db = yield* openDb;
   const saved: Array<Entry> = [];
 
   for (const row of rows) {
     yield* query(
       () =>
-        connection.run(
-          "INSERT INTO entries (id, project_id, title, body, created_at) VALUES (?, ?, ?, ?, ?)",
-          row.id,
-          row.projectId,
-          row.title,
-          row.body,
-          row.createdAt,
-        ),
+        db.insert(entries).values({
+          id: row.id,
+          projectId: row.projectId,
+          title: row.title,
+          body: row.body,
+          createdAt: row.createdAt,
+        }),
       "Could not insert the entry.",
     );
-    saved.push(yield* requireEntry(yield* readEntryRow(connection, row.id)));
+    saved.push(yield* requireEntry(yield* readEntryRow(db, row.id)));
   }
 
   return saved;
@@ -415,38 +338,28 @@ export const insertEntries = Effect.fn("insertEntries")(function* (rows: Readonl
 export const updateEntries = Effect.fn("updateEntries")(function* (
   rows: ReadonlyArray<{ readonly id: string; readonly changes: EntryChanges }>,
 ) {
-  const connection = yield* openConfigured;
-  yield* ensureSchema(connection);
+  const db = yield* openDb;
   const saved: Array<Entry> = [];
 
   for (const row of rows) {
-    const assignment = entryAssignments(row.changes);
-    if (assignment.sql.length > 0) {
+    const assignments = entryAssignments(row.changes);
+    if (Object.keys(assignments).length > 0) {
       yield* query(
-        () =>
-          connection.run(
-            `UPDATE entries SET ${assignment.sql} WHERE id = ?`,
-            ...assignment.args,
-            row.id,
-          ),
+        () => db.update(entries).set(assignments).where(eq(entries.id, row.id)),
         "Could not update the entry.",
       );
     }
 
-    saved.push(yield* requireEntry(yield* readEntryRow(connection, row.id)));
+    saved.push(yield* requireEntry(yield* readEntryRow(db, row.id)));
   }
 
   return saved;
 });
 
 export const deleteEntries = Effect.fn("deleteEntries")(function* (ids: ReadonlyArray<string>) {
-  const connection = yield* openConfigured;
-  yield* ensureSchema(connection);
+  const db = yield* openDb;
 
   for (const id of ids) {
-    yield* query(
-      () => connection.run("DELETE FROM entries WHERE id = ?", id),
-      "Could not delete the entry.",
-    );
+    yield* query(() => db.delete(entries).where(eq(entries.id, id)), "Could not delete the entry.");
   }
 });
