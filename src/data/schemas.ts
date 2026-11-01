@@ -13,27 +13,27 @@ export const entrySchema = v.object({
   createdAt: v.string(),
 });
 
-export const entryChangesSchema = v.partial(v.omit(entrySchema, ["id"]));
+const entryChangesSchema = v.partial(v.omit(entrySchema, ["id"]));
 
-export const projectUpdateSchema = v.object({
+const projectUpdateSchema = v.object({
   id: v.string(),
   changes: v.object({
     name: v.optional(v.string()),
   }),
 });
 
-export const entryUpdateSchema = v.object({
+const entryUpdateSchema = v.object({
   id: v.string(),
   changes: entryChangesSchema,
 });
 
-export const subsetFilterSchema = v.object({
+const subsetFilterSchema = v.object({
   field: v.array(v.union([v.string(), v.number()])),
   operator: v.string(),
   value: v.optional(v.union([v.string(), v.number()])),
 });
 
-export const subsetSortSchema = v.object({
+const subsetSortSchema = v.object({
   field: v.array(v.union([v.string(), v.number()])),
   direction: v.picklist(["asc", "desc"]),
 });

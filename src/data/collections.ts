@@ -12,7 +12,7 @@ import {
   saveEntries,
   saveProjects,
 } from "../functions/records";
-import type { Entry, EntryChanges, Project } from "./schemas";
+import type { Entry, EntryChanges } from "./schemas";
 import { entrySchema, projectSchema } from "./schemas";
 
 /**
@@ -47,7 +47,7 @@ const definedEntryChanges = (changes: Partial<Entry>): EntryChanges => {
   return next;
 };
 
-export const projectCollection = collectionOptions("projects", (client) =>
+const projectCollection = collectionOptions("projects", (client) =>
   queryCollectionOptions({
     id: "projects",
     queryKey: ["projects"],
@@ -78,7 +78,7 @@ export const projectCollection = collectionOptions("projects", (client) =>
   }),
 );
 
-export const entryCollection = collectionOptions("entries", (client) =>
+const entryCollection = collectionOptions("entries", (client) =>
   queryCollectionOptions({
     id: "entries",
     queryKey: ["entries"],
@@ -109,7 +109,7 @@ export const entryCollection = collectionOptions("entries", (client) =>
   }),
 );
 
-export const entryQuerySyncCollection = collectionOptions("entries-sync", (client) =>
+const entryQuerySyncCollection = collectionOptions("entries-sync", (client) =>
   queryCollectionOptions({
     id: "entries-sync",
     queryKey: ["entries", "sync"],
@@ -166,5 +166,3 @@ export const changelogCollections = {
   entries: entryCollection,
   entriesOnDemand: entryQuerySyncCollection,
 } as const;
-
-export type { Entry, Project };
