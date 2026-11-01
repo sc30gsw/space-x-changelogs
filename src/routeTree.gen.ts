@@ -10,33 +10,63 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ManageRouteImport } from './routes/manage'
+import { Route as EntriesEntryIdRouteImport } from './routes/entries/$entryId'
+import { Route as TracksSlugRouteImport } from './routes/tracks/$slug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ManageRoute = ManageRouteImport.update({
+  id: '/manage',
+  path: '/manage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EntriesEntryIdRoute = EntriesEntryIdRouteImport.update({
+  id: '/entries/$entryId',
+  path: '/entries/$entryId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TracksSlugRoute = TracksSlugRouteImport.update({
+  id: '/tracks/$slug',
+  path: '/tracks/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/manage': typeof ManageRoute
+  '/entries/$entryId': typeof EntriesEntryIdRoute
+  '/tracks/$slug': typeof TracksSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/manage': typeof ManageRoute
+  '/entries/$entryId': typeof EntriesEntryIdRoute
+  '/tracks/$slug': typeof TracksSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/manage': typeof ManageRoute
+  '/entries/$entryId': typeof EntriesEntryIdRoute
+  '/tracks/$slug': typeof TracksSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/manage' | '/entries/$entryId' | '/tracks/$slug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/manage' | '/entries/$entryId' | '/tracks/$slug'
+  id: '__root__' | '/' | '/manage' | '/entries/$entryId' | '/tracks/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ManageRoute: typeof ManageRoute
+  EntriesEntryIdRoute: typeof EntriesEntryIdRoute
+  TracksSlugRoute: typeof TracksSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,21 +78,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/manage': {
+      id: '/manage'
+      path: '/manage'
+      fullPath: '/manage'
+      preLoaderRoute: typeof ManageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/entries/$entryId': {
+      id: '/entries/$entryId'
+      path: '/entries/$entryId'
+      fullPath: '/entries/$entryId'
+      preLoaderRoute: typeof EntriesEntryIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tracks/$slug': {
+      id: '/tracks/$slug'
+      path: '/tracks/$slug'
+      fullPath: '/tracks/$slug'
+      preLoaderRoute: typeof TracksSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ManageRoute: ManageRoute,
+  EntriesEntryIdRoute: EntriesEntryIdRoute,
+  TracksSlugRoute: TracksSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

@@ -2,50 +2,71 @@ import { collectionOptions } from "@tanstack/db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
 import type { QueryClient } from "@tanstack/query-core";
 import {
-  createEntries,
-  createProjects,
+  createMemos,
+  createSources,
+  createTracks,
   listEntries,
-  listProjects,
-  removeEntries,
-  removeProjects,
+  listMemos,
+  listSources,
+  listTracks,
+  removeEntriesFn,
+  removeMemosFn,
   saveEntries,
-  saveProjects,
+  saveMemos,
+  saveSources,
+  saveTracks,
 } from "../functions/records";
-import { pickEntryChanges } from "./entry-changes";
-import { entrySchema, projectSchema } from "./schemas";
+import { pickEntryChanges, pickMemoChanges, pickSourceChanges, pickTrackChanges } from "./changes";
+import { entrySchema, memoSchema, sourceSchema, trackSchema } from "./schemas";
 
-/**
- * Adoption: wrap the list endpoints in collections first. Add on-demand sync
- * (`syncMode: "on-demand"`) when the API can answer live-query predicates.
- */
-
-const projectCollection = collectionOptions("projects", (client) =>
+const trackCollection = collectionOptions("tracks", (client) =>
   queryCollectionOptions({
-    id: "projects",
-    queryKey: ["projects"],
-    queryFn: () => listProjects(),
+    id: "tracks",
+    queryKey: ["tracks"],
+    queryFn: () => listTracks(),
     queryClient: client.requireDependency<QueryClient>("queryClient"),
-    schema: projectSchema,
-    getKey: (project) => project.id,
+    schema: trackSchema,
+    getKey: (track) => track.id,
     onInsert: async ({ transaction, collection }) => {
-      const saved = await createProjects({
+      const saved = await createTracks({
         data: transaction.mutations.map((mutation) => mutation.modified),
       });
       await collection.utils.writeUpsert(saved);
     },
     onUpdate: async ({ transaction, collection }) => {
-      const saved = await saveProjects({
+      const saved = await saveTracks({
         data: transaction.mutations.map((mutation) => ({
-          id: mutation.key,
-          changes: { name: mutation.changes.name },
+          id: String(mutation.key),
+          changes: pickTrackChanges(mutation.changes),
         })),
       });
       await collection.utils.writeUpsert(saved);
     },
-    onDelete: async ({ transaction, collection }) => {
-      const keys = transaction.mutations.map((mutation) => mutation.key);
-      await removeProjects({ data: keys });
-      await collection.utils.writeDelete(keys);
+  }),
+);
+
+const sourceCollection = collectionOptions("sources", (client) =>
+  queryCollectionOptions({
+    id: "sources",
+    queryKey: ["sources"],
+    queryFn: () => listSources(),
+    queryClient: client.requireDependency<QueryClient>("queryClient"),
+    schema: sourceSchema,
+    getKey: (source) => source.id,
+    onInsert: async ({ transaction, collection }) => {
+      const saved = await createSources({
+        data: transaction.mutations.map((mutation) => mutation.modified),
+      });
+      await collection.utils.writeUpsert(saved);
+    },
+    onUpdate: async ({ transaction, collection }) => {
+      const saved = await saveSources({
+        data: transaction.mutations.map((mutation) => ({
+          id: String(mutation.key),
+          changes: pickSourceChanges(mutation.changes),
+        })),
+      });
+      await collection.utils.writeUpsert(saved);
     },
   }),
 );
@@ -58,30 +79,57 @@ const entryCollection = collectionOptions("entries", (client) =>
     queryClient: client.requireDependency<QueryClient>("queryClient"),
     schema: entrySchema,
     getKey: (entry) => entry.id,
-    onInsert: async ({ transaction, collection }) => {
-      const saved = await createEntries({
-        data: transaction.mutations.map((mutation) => mutation.modified),
-      });
-      await collection.utils.writeUpsert(saved);
-    },
     onUpdate: async ({ transaction, collection }) => {
       const saved = await saveEntries({
         data: transaction.mutations.map((mutation) => ({
-          id: mutation.key,
+          id: String(mutation.key),
           changes: pickEntryChanges(mutation.changes),
         })),
       });
       await collection.utils.writeUpsert(saved);
     },
     onDelete: async ({ transaction, collection }) => {
-      const keys = transaction.mutations.map((mutation) => mutation.key);
-      await removeEntries({ data: keys });
+      const keys = transaction.mutations.map((mutation) => String(mutation.key));
+      await removeEntriesFn({ data: keys });
+      await collection.utils.writeDelete(keys);
+    },
+  }),
+);
+
+const memoCollection = collectionOptions("memos", (client) =>
+  queryCollectionOptions({
+    id: "memos",
+    queryKey: ["memos"],
+    queryFn: () => listMemos(),
+    queryClient: client.requireDependency<QueryClient>("queryClient"),
+    schema: memoSchema,
+    getKey: (memo) => memo.id,
+    onInsert: async ({ transaction, collection }) => {
+      const saved = await createMemos({
+        data: transaction.mutations.map((mutation) => mutation.modified),
+      });
+      await collection.utils.writeUpsert(saved);
+    },
+    onUpdate: async ({ transaction, collection }) => {
+      const saved = await saveMemos({
+        data: transaction.mutations.map((mutation) => ({
+          id: String(mutation.key),
+          changes: pickMemoChanges(mutation.changes),
+        })),
+      });
+      await collection.utils.writeUpsert(saved);
+    },
+    onDelete: async ({ transaction, collection }) => {
+      const keys = transaction.mutations.map((mutation) => String(mutation.key));
+      await removeMemosFn({ data: keys });
       await collection.utils.writeDelete(keys);
     },
   }),
 );
 
 export const changelogCollections = {
-  projects: projectCollection,
+  tracks: trackCollection,
+  sources: sourceCollection,
   entries: entryCollection,
+  memos: memoCollection,
 } as const;

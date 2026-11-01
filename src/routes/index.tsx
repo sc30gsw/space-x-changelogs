@@ -1,12 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Shell } from "../components/shell";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
-  // Full-document SSR. Start streams this route inside the root document.
-  ssr: true,
-  component: Home,
+  beforeLoad: () => {
+    throw redirect({ to: "/tracks/$slug", params: { slug: "cursor" } });
+  },
 });
-
-function Home() {
-  return <Shell />;
-}

@@ -1,25 +1,44 @@
 import mantineCoreStyles from "@mantine/core/styles.css?url";
+import mantineSpotlightStyles from "@mantine/spotlight/styles.css?url";
+import mantineTiptapStyles from "@mantine/tiptap/styles.css?url";
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from "@mantine/core";
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { Frame } from "../components/frame";
+import { theme } from "../components/theme";
 import { DataProvider } from "../data/provider";
+import { WorkspaceProvider } from "../data/workspace";
 import "../styles/stylex.css";
 
 export const Route = createRootRoute({
+  ssr: false,
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "SpaceX changelogs" },
     ],
-    links: [{ rel: "stylesheet", href: mantineCoreStyles }],
+    links: [
+      { rel: "stylesheet", href: mantineCoreStyles },
+      { rel: "stylesheet", href: mantineSpotlightStyles },
+      { rel: "stylesheet", href: mantineTiptapStyles },
+    ],
   }),
+  component: RootLayout,
   shellComponent: RootDocument,
 });
 
+function RootLayout() {
+  return (
+    <Frame>
+      <Outlet />
+    </Frame>
+  );
+}
+
 function RootDocument({ children }: { readonly children: ReactNode }) {
   return (
-    <html lang="en" {...mantineHtmlProps}>
+    <html lang="ja" {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript />
         <HeadContent />
@@ -31,9 +50,10 @@ function RootDocument({ children }: { readonly children: ReactNode }) {
         ) : null}
       </head>
       <body>
-        {/* Full HTML document. Start streams this shell with React SSR. */}
-        <MantineProvider>
-          <DataProvider>{children}</DataProvider>
+        <MantineProvider theme={theme}>
+          <DataProvider>
+            <WorkspaceProvider>{children}</WorkspaceProvider>
+          </DataProvider>
         </MantineProvider>
         <Scripts />
       </body>
