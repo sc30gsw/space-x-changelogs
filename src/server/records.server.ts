@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, like, lt, lte, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, like, lt, lte, type SQL } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { Effect } from "effect";
 import * as v from "valibot";
@@ -6,7 +6,7 @@ import { entries, projects } from "../db/schema";
 import type { Entry, EntryChanges, EntrySubset, Project } from "../data/schemas";
 import { entrySchema, projectSchema } from "../data/schemas";
 import { HttpFailure } from "./boundary.server";
-import { Database, type Db } from "./db.server";
+import { Database, DatabaseError, type Db } from "./db.server";
 
 const entryColumns = {
   id: entries.id,
@@ -18,11 +18,10 @@ const entryColumns = {
 
 type EntryField = keyof typeof entryColumns;
 
-// Drizzle builders are thenables, not Promises, so await them inside a real Promise.
 const query = <A>(task: () => PromiseLike<A>, message: string) =>
   Effect.tryPromise({
-    try: async () => await task(),
-    catch: (cause) => new HttpFailure({ status: 503, message, cause }),
+    try: task,
+    catch: (cause) => new DatabaseError({ message, cause }),
   });
 
 const decode = <A>(schema: v.GenericSchema<A>, row: unknown, message: string) =>
@@ -30,29 +29,6 @@ const decode = <A>(schema: v.GenericSchema<A>, row: unknown, message: string) =>
     try: () => v.parse(schema, row),
     catch: (cause) => new HttpFailure({ status: 500, message, cause }),
   });
-
-// The scaffold tables are still created at runtime. drizzle-kit migrations arrive with the
-// production schema; until then `db:generate` / `db:migrate` have nothing to apply.
-const ensureSchema = (db: Db) =>
-  query(async () => {
-    await db.run(sql`CREATE TABLE IF NOT EXISTS projects (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL
-    )`);
-    await db.run(sql`CREATE TABLE IF NOT EXISTS entries (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      body TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )`);
-  }, "Could not prepare the Turso schema.");
-
-const openDb = Effect.gen(function* () {
-  const { db } = yield* Database;
-  yield* ensureSchema(db);
-  return db;
-});
 
 const entryField = (field: ReadonlyArray<string | number>): EntryField | undefined => {
   const name = field.at(-1);
@@ -213,7 +189,7 @@ const readEntryRow = (db: Db, id: string) =>
   );
 
 export const readProjects = Effect.fn("readProjects")(function* () {
-  const db = yield* openDb;
+  const { db } = yield* Database;
   const rows = yield* query(
     () => db.select().from(projects).orderBy(asc(projects.name), asc(projects.id)),
     "Could not read projects.",
@@ -222,7 +198,7 @@ export const readProjects = Effect.fn("readProjects")(function* () {
 });
 
 export const readEntries = Effect.fn("readEntries")(function* () {
-  const db = yield* openDb;
+  const { db } = yield* Database;
   const rows = yield* query(
     () => db.select().from(entries).orderBy(asc(entries.createdAt), asc(entries.id)),
     "Could not read entries.",
@@ -233,7 +209,7 @@ export const readEntries = Effect.fn("readEntries")(function* () {
 export const readEntriesMatching = Effect.fn("readEntriesMatching")(function* (
   subset: EntrySubset,
 ) {
-  const db = yield* openDb;
+  const { db } = yield* Database;
   const statement = yield* compileEntrySubset(subset);
   const rows = yield* query(() => {
     const base = db
@@ -248,7 +224,7 @@ export const readEntriesMatching = Effect.fn("readEntriesMatching")(function* (
 });
 
 export const insertProjects = Effect.fn("insertProjects")(function* (rows: ReadonlyArray<Project>) {
-  const db = yield* openDb;
+  const { db } = yield* Database;
   const saved: Array<Project> = [];
 
   for (const row of rows) {
@@ -265,7 +241,7 @@ export const insertProjects = Effect.fn("insertProjects")(function* (rows: Reado
 export const updateProjects = Effect.fn("updateProjects")(function* (
   rows: ReadonlyArray<{ readonly id: string; readonly changes: { readonly name?: string } }>,
 ) {
-  const db = yield* openDb;
+  const { db } = yield* Database;
   const saved: Array<Project> = [];
 
   for (const row of rows) {
@@ -284,7 +260,7 @@ export const updateProjects = Effect.fn("updateProjects")(function* (
 });
 
 export const deleteProjects = Effect.fn("deleteProjects")(function* (ids: ReadonlyArray<string>) {
-  const db = yield* openDb;
+  const { db } = yield* Database;
 
   for (const id of ids) {
     yield* query(
@@ -314,7 +290,7 @@ const entryAssignments = (changes: EntryChanges): Partial<typeof entries.$inferI
 };
 
 export const insertEntries = Effect.fn("insertEntries")(function* (rows: ReadonlyArray<Entry>) {
-  const db = yield* openDb;
+  const { db } = yield* Database;
   const saved: Array<Entry> = [];
 
   for (const row of rows) {
@@ -338,7 +314,7 @@ export const insertEntries = Effect.fn("insertEntries")(function* (rows: Readonl
 export const updateEntries = Effect.fn("updateEntries")(function* (
   rows: ReadonlyArray<{ readonly id: string; readonly changes: EntryChanges }>,
 ) {
-  const db = yield* openDb;
+  const { db } = yield* Database;
   const saved: Array<Entry> = [];
 
   for (const row of rows) {
@@ -357,7 +333,7 @@ export const updateEntries = Effect.fn("updateEntries")(function* (
 });
 
 export const deleteEntries = Effect.fn("deleteEntries")(function* (ids: ReadonlyArray<string>) {
-  const db = yield* openDb;
+  const { db } = yield* Database;
 
   for (const id of ids) {
     yield* query(() => db.delete(entries).where(eq(entries.id, id)), "Could not delete the entry.");
