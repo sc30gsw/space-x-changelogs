@@ -15,10 +15,13 @@
     "format": "vp fmt",
     "lint": "vp lint",
     "test:e2e": "e2e run",
-    "doctor": "npx react-doctor@latest"
+    "doctor": "npx react-doctor@latest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@formisch/react": "^1.2.0",
+    "@libsql/client": "^0.18.0",
     "@mantine/core": "^9.7.4",
     "@mantine/hooks": "^9.7.4",
     "@stylexjs/stylex": "^0.19.1",
@@ -28,7 +31,7 @@
     "@tanstack/react-db": "1.0.0-rc.1.1",
     "@tanstack/react-router": "1.170.46",
     "@tanstack/react-start": "1.169.4",
-    "@tursodatabase/serverless": "1.4.1",
+    "drizzle-orm": "^0.45.4",
     "effect": "^4.1.1",
     "nitro": "3.0.261029-rc",
     "react": "^19.2.0",
@@ -44,6 +47,7 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
     "ai": "^7.0.0",
+    "drizzle-kit": "^0.31.11",
     "e2e": "^0.22.0",
     "lightningcss": "^1.33.0",
     "oxfmt": "0.74.0",
