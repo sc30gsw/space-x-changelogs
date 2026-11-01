@@ -9,6 +9,7 @@
     "zod": "^4.1.8"
   },
   "scripts": {
-    "test:e2e": "e2e run"
+    "test:e2e": "e2e run",
+    "doctor": "npx react-doctor@latest"
   }
 }
