@@ -19,6 +19,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The `parallel:` shorthand makes GitHub drop every workflow on the commit with no error, so the group is spelled out as background steps and a wait.
       - id: typecheck
         name: Typecheck
         run: pnpm typecheck
