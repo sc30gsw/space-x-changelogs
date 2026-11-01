@@ -1,7 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { Anchor, Container, Stack, Title } from "@mantine/core";
-import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { Container, Stack, Title } from "@mantine/core";
 import { mantine } from "../styles/tokens.stylex";
 
 const styles = stylex.create({
@@ -13,21 +11,11 @@ const styles = stylex.create({
   },
 });
 
-export function Shell({
-  title,
-  children,
-}: {
-  readonly title: string;
-  readonly children: ReactNode;
-}) {
+export function Shell() {
   return (
     <Container size="sm" py="xl">
       <Stack {...stylex.props(styles.panel)}>
-        <Anchor component={Link} to="/">
-          SpaceX changelogs
-        </Anchor>
-        <Title order={2}>{title}</Title>
-        {children}
+        <Title order={1}>SpaceX changelogs</Title>
       </Stack>
     </Container>
   );

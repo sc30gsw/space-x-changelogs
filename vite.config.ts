@@ -30,6 +30,16 @@ const config = defineConfig({
     ],
   },
   lint: {
+    ignorePatterns: [
+      ".agents/**",
+      ".claude/**",
+      ".cursor/**",
+      ".mcp.json",
+      "e2e.config.ts",
+      "skills-lock.json",
+      "src/routeTree.gen.ts",
+      "tests/**",
+    ],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },
     options: { typeAware: true, typeCheck: true },

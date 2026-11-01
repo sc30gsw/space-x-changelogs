@@ -2,6 +2,7 @@ import mantineCoreStyles from "@mantine/core/styles.css?url";
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from "@mantine/core";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { DataProvider } from "../data/provider";
 import "../styles/stylex.css";
 
 export const Route = createRootRoute({
@@ -31,7 +32,9 @@ function RootDocument({ children }: { readonly children: ReactNode }) {
       </head>
       <body>
         {/* Full HTML document. Start streams this shell with React SSR. */}
-        <MantineProvider>{children}</MantineProvider>
+        <MantineProvider>
+          <DataProvider>{children}</DataProvider>
+        </MantineProvider>
         <Scripts />
       </body>
     </html>
