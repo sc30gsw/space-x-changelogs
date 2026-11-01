@@ -1,14 +1,51 @@
 {
+  "name": "space-x-changelogs",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.33.0",
-  "devDependencies": {
-    "e2e": "^0.22.0",
-    "@e2e-dev/web": "^0.15.4",
-    "ai": "^7.0.0",
-    "zod": "^4.1.8"
+  "imports": {
+    "#/*": "./src/*"
   },
   "scripts": {
+    "dev": "vp dev --port 3000",
+    "generate-routes": "tsr generate",
+    "build": "vp build",
+    "preview": "vp preview",
+    "start": "node .output/server/index.mjs",
+    "typecheck": "tsc --noEmit",
     "test:e2e": "e2e run"
-  }
+  },
+  "dependencies": {
+    "@formisch/react": "^1.2.0",
+    "@mantine/core": "^9.7.4",
+    "@mantine/hooks": "^9.7.4",
+    "@stylexjs/stylex": "^0.19.1",
+    "@tanstack/react-router": "1.170.46",
+    "@tanstack/react-start": "1.169.4",
+    "effect": "^4.1.1",
+    "nitro": "3.0.261029-rc",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@e2e-dev/web": "^0.15.4",
+    "@stylexjs/unplugin": "^0.19.1",
+    "@tanstack/router-cli": "^1.132.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "ai": "^7.0.0",
+    "e2e": "^0.22.0",
+    "lightningcss": "^1.33.0",
+    "postcss": "^8.5.32",
+    "postcss-preset-mantine": "^1.18.0",
+    "postcss-simple-vars": "^7.0.1",
+    "typescript": "^6.0.2",
+    "unplugin": "^2.3.11",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "zod": "^4.1.8"
+  },
+  "packageManager": "pnpm@10.33.0"
 }
