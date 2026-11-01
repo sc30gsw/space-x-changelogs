@@ -109,25 +109,12 @@ export const sourceFormSchema = v.object({
   url: sourceSchema.entries.url,
 });
 
-export const caughtUpSchema = v.object({
-  id: idSchema,
-  caughtUp: v.boolean(),
-});
-
-export const memoInputSchema = v.object({
-  id: v.optional(idSchema),
-  entryId: idSchema,
-  body: v.pipe(v.string(), v.minLength(1, "Memo を入力してください"), v.maxLength(20000)),
-});
-
 const entryChangesSchema = v.partial(v.omit(entrySchema, ["id"]));
 
 export const tracksSchema = v.array(trackSchema);
 export const sourcesSchema = v.array(sourceSchema);
-export const entriesSchema = v.array(entrySchema);
 export const memosSchema = v.array(memoSchema);
 export const keysSchema = v.array(idSchema);
-export const caughtUpManySchema = v.array(caughtUpSchema);
 
 export const trackUpdatesSchema = v.array(
   v.object({
@@ -169,7 +156,6 @@ export type Track = v.InferOutput<typeof trackSchema>;
 export type Source = v.InferOutput<typeof sourceSchema>;
 export type Entry = v.InferOutput<typeof entrySchema>;
 export type Memo = v.InferOutput<typeof memoSchema>;
-export type SubmitEntry = v.InferOutput<typeof submitEntrySchema>;
 export type EntryFormValues = v.InferOutput<typeof entryFormSchema>;
 export type EntryChanges = v.InferOutput<typeof entryChangesSchema>;
 export type TrackFormValues = v.InferOutput<typeof trackFormSchema>;

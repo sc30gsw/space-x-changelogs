@@ -1,6 +1,6 @@
 import { Temporal } from "@js-temporal/polyfill";
 
-export const jst = "Asia/Tokyo";
+const jst = "Asia/Tokyo";
 
 const pad = (value: number): string => String(value).padStart(2, "0");
 

@@ -95,7 +95,7 @@ const errorText = (error: unknown): string => {
 
 const isUnique = (error: unknown): boolean => errorText(error).includes("UNIQUE constraint failed");
 
-export const ensureSeed = Effect.fn("ensureSeed")(function* () {
+const ensureSeed = Effect.fn("ensureSeed")(function* () {
   const { db } = yield* Database;
   const existing = yield* query(
     () => db.select({ id: tracks.id }).from(tracks).limit(1),
