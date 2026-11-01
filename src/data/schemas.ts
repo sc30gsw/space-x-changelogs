@@ -27,24 +27,6 @@ const entryUpdateSchema = v.object({
   changes: entryChangesSchema,
 });
 
-const subsetFilterSchema = v.object({
-  field: v.array(v.union([v.string(), v.number()])),
-  operator: v.string(),
-  value: v.optional(v.union([v.string(), v.number()])),
-});
-
-const subsetSortSchema = v.object({
-  field: v.array(v.union([v.string(), v.number()])),
-  direction: v.picklist(["asc", "desc"]),
-});
-
-export const entrySubsetSchema = v.object({
-  filters: v.array(subsetFilterSchema),
-  sorts: v.array(subsetSortSchema),
-  limit: v.optional(v.number()),
-  offset: v.optional(v.number()),
-});
-
 export const projectsSchema = v.array(projectSchema);
 export const entriesSchema = v.array(entrySchema);
 export const projectUpdatesSchema = v.array(projectUpdateSchema);
@@ -54,4 +36,3 @@ export const keysSchema = v.array(v.string());
 export type Project = v.InferOutput<typeof projectSchema>;
 export type Entry = v.InferOutput<typeof entrySchema>;
 export type EntryChanges = v.InferOutput<typeof entryChangesSchema>;
-export type EntrySubset = v.InferOutput<typeof entrySubsetSchema>;

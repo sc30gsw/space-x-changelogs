@@ -1,7 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import {
   entriesSchema,
-  entrySubsetSchema,
   entryUpdatesSchema,
   keysSchema,
   projectUpdatesSchema,
@@ -14,7 +13,6 @@ import {
   insertEntries,
   insertProjects,
   readEntries,
-  readEntriesMatching,
   readProjects,
   updateEntries,
   updateProjects,
@@ -25,10 +23,6 @@ export const listProjects = createServerFn({ method: "GET" }).handler(() =>
 );
 
 export const listEntries = createServerFn({ method: "GET" }).handler(() => runHttp(readEntries()));
-
-export const listEntriesMatching = createServerFn({ method: "GET" })
-  .validator(entrySubsetSchema)
-  .handler(({ data }) => runHttp(readEntriesMatching(data)));
 
 export const createProjects = createServerFn({ method: "POST" })
   .validator(projectsSchema)

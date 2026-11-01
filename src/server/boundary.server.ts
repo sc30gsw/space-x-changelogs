@@ -1,27 +1,20 @@
 import { createServerOnlyFn } from "@tanstack/react-start";
 import { setResponseStatus } from "@tanstack/react-start/server";
-import { Effect, Schema } from "effect";
-import { Database, type DatabaseError, type DatabaseUnconfigured } from "./db.server";
+import { Effect } from "effect";
+import { Database, type StoreError } from "./db.server";
 
-export class HttpFailure extends Schema.TaggedError<HttpFailure>()("HttpFailure", {
-  status: Schema.Int,
-  message: Schema.String,
-  cause: Schema.optional(Schema.Defect()),
-}) {}
+const unconfiguredMessage = "Turso is not configured. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.";
 
-type ServerError = HttpFailure | DatabaseError | DatabaseUnconfigured;
-
-const toHttpFailure = (error: ServerError): HttpFailure => {
+const statusFor = (error: StoreError): number => {
   switch (error._tag) {
-    case "HttpFailure":
-      return error;
     case "DatabaseUnconfigured":
-      return new HttpFailure({
-        status: 500,
-        message: "Turso is not configured. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.",
-      });
+      return 500;
+    case "RecordNotFound":
+      return 404;
+    case "RecordRejected":
+      return 500;
     case "DatabaseError":
-      return new HttpFailure({ status: 503, message: error.message, cause: error.cause });
+      return 503;
     default: {
       const unreachable: never = error;
       return unreachable;
@@ -29,18 +22,51 @@ const toHttpFailure = (error: ServerError): HttpFailure => {
   }
 };
 
+const publicMessage = (error: StoreError): string => {
+  switch (error._tag) {
+    case "DatabaseUnconfigured":
+      return unconfiguredMessage;
+    case "RecordNotFound":
+    case "RecordRejected":
+    case "DatabaseError":
+      return error.message;
+    default: {
+      const unreachable: never = error;
+      return unreachable;
+    }
+  }
+};
+
+const logFailure = (error: StoreError): Effect.Effect<void> => {
+  switch (error._tag) {
+    case "DatabaseError":
+    case "RecordRejected":
+      return Effect.logError(publicMessage(error), error.cause);
+    case "DatabaseUnconfigured":
+    case "RecordNotFound":
+      return Effect.logError(publicMessage(error));
+    default: {
+      const unreachable: never = error;
+      return unreachable;
+    }
+  }
+};
+
+// Server functions run an Effect program and map a tagged failure to the HTTP status here.
 export const runHttp = createServerOnlyFn(
-  <A>(program: Effect.Effect<A, ServerError, Database>): Promise<A> =>
+  <A>(program: Effect.Effect<A, StoreError, Database>): Promise<A> =>
     Effect.runPromise(
       program.pipe(
         Effect.provide(Database.layer),
-        Effect.mapError(toHttpFailure),
         Effect.tapError((error) =>
-          Effect.sync(() => {
-            setResponseStatus(error.status);
-          }),
+          Effect.andThen(
+            logFailure(error),
+            Effect.sync(() => {
+              setResponseStatus(statusFor(error));
+            }),
+          ),
         ),
-        Effect.mapError((error) => new Error(error.message)),
+        Effect.mapError((error) => new Error(publicMessage(error))),
       ),
     ),
 );
