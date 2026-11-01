@@ -1,43 +1,51 @@
 import { createTheme, type MantineColorsTuple } from "@mantine/core";
 
-const cobalt: MantineColorsTuple = [
-  "#e7f0f7",
-  "#c9dced",
-  "#a4c4e0",
-  "#7aa8d0",
-  "#568fc2",
-  "#3b7db8",
-  "#2d6496",
-  "#234e76",
-  "#1a3b59",
-  "#12283d",
-];
-
-const signal: MantineColorsTuple = [
-  "#fff3e8",
-  "#ffe0c4",
-  "#ffc48d",
-  "#f5a45a",
-  "#e8832a",
-  "#d26512",
-  "#b45309",
-  "#8c3f08",
-  "#6b2e06",
-  "#4a1f04",
+const ink: MantineColorsTuple = [
+  "#f4f5f6",
+  "#e6e7ea",
+  "#cfd2d6",
+  "#a7acb3",
+  "#7c838c",
+  "#5b626b",
+  "#3d434b",
+  "#23272c",
+  "#16191d",
+  "#0d0f12",
 ];
 
 export const theme = createTheme({
-  primaryColor: "cobalt",
-  primaryShade: 7,
-  colors: { cobalt, signal },
+  primaryColor: "ink",
+  primaryShade: 8,
+  colors: { ink },
   fontFamily: '"Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif',
   headings: {
     fontFamily: '"Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif',
     fontWeight: "600",
+    sizes: {
+      h1: { fontSize: "2.125rem", lineHeight: "1.25", fontWeight: "600" },
+      h2: { fontSize: "1.375rem", lineHeight: "1.35", fontWeight: "600" },
+      h3: { fontSize: "1.125rem", lineHeight: "1.4", fontWeight: "600" },
+    },
   },
-  defaultRadius: "sm",
+  defaultRadius: "xs",
   cursorType: "pointer",
   autoContrast: true,
-  black: "#1b2836",
-  white: "#f7fafc",
+  black: "#16191d",
+  white: "#fbfbfc",
+  focusRing: "auto",
+  components: {
+    Button: {
+      styles: {
+        root: { fontWeight: 500 },
+      },
+    },
+    Input: {
+      styles: {
+        input: {
+          background: "#ffffff",
+          borderColor: "#d9dce1",
+        },
+      },
+    },
+  },
 });

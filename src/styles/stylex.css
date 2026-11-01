@@ -2,3 +2,18 @@
 :root {
   color-scheme: light;
 }
+
+body {
+  background: #fbfbfc;
+  color: #16191d;
+}
+
+a.log-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.log-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}

@@ -186,7 +186,7 @@ function SourceEditor({ sourceId }: { readonly sourceId: Source["id"] }) {
   };
 
   return (
-    <Group align="flex-end">
+    <Group align="flex-end" wrap="wrap">
       <TextInput
         label={`ラベル ${source.label}`}
         value={label}
@@ -211,7 +211,7 @@ export function ManageScreen() {
   return (
     <Stack gap="xl">
       <Title order={1}>Track 管理</Title>
-      <Text>Track を増やしたあとの Watcher 作成は Grok Bot App 側です。</Text>
+      <Text lh={1.7}>Track を増やしたあとの Watcher 作成は Grok Bot App 側です。</Text>
       <TrackCreateForm />
       {ordered.map((track) => (
         <Stack key={track.id} gap="md">

@@ -1,4 +1,4 @@
-import { Anchor, Button, Group, Modal, Stack, Switch, Text, Title } from "@mantine/core";
+import { Anchor, Box, Button, Group, Modal, Stack, Switch, Text, Title } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { submitEntryFn } from "../../../api/records";
@@ -117,27 +117,32 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
 
   return (
     <Stack gap="lg">
-      <Group justify="space-between">
-        {track !== undefined ? (
-          <Link to="/tracks/$slug" params={{ slug: track.slug }}>
-            {track.name}
-          </Link>
-        ) : (
-          <Text>Track</Text>
+      {track !== undefined ? (
+        <Link className="log-link" to="/tracks/$slug" params={{ slug: track.slug }}>
+          {track.name}
+        </Link>
+      ) : (
+        <Text>Track</Text>
+      )}
+      <Group gap="sm" align="center">
+        {entry.caughtUp ? null : (
+          <Box aria-hidden w={7} h={7} bg="ink.8" style={{ borderRadius: 1 }} />
         )}
-        <Text c={entry.caughtUp ? "teal" : "signal.8"}>
+        <Text size="sm" c="dimmed">
+          {formatJst(entry.publishedAt)}
+        </Text>
+        <Text size="sm">{entry.kind}</Text>
+        <Text size="sm" fw={entry.caughtUp ? 400 : 600}>
           {entry.caughtUp ? "Caught up" : "Unread"}
         </Text>
       </Group>
       <Title order={1}>{entry.title}</Title>
-      <Group gap="sm">
-        <Text c="dimmed">{entry.kind}</Text>
-        <Text c="dimmed">{formatJst(entry.publishedAt)}</Text>
-      </Group>
-      <Anchor href={entry.url} target="_blank" rel="noreferrer">
+      <Text size="lg" lh={1.75}>
+        {entry.summary}
+      </Text>
+      <Anchor href={entry.url} target="_blank" rel="noreferrer" c="ink.8">
         原文
       </Anchor>
-      <Text>{entry.summary}</Text>
       <MarkdownView text={entry.body} />
       <Switch
         label="Caught up"
@@ -171,7 +176,7 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
           />
         </section>
       ) : null}
-      <section aria-label="Memo">
+      <section aria-label="Memo" style={{ borderTop: "1px solid #e6e7ea", paddingTop: 28 }}>
         <Title order={2} size="h3">
           Memo
         </Title>

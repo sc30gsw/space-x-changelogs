@@ -1,4 +1,4 @@
-import { Anchor, Button, Checkbox, Group, Select, Stack, Text, Title } from "@mantine/core";
+import { Anchor, Box, Button, Checkbox, Group, Select, Stack, Text, Title } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { submitEntryFn } from "../../../api/records";
@@ -86,21 +86,26 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
   };
 
   return (
-    <Stack gap="lg">
-      <Group justify="space-between" align="flex-end">
+    <Stack gap="xl">
+      <Group justify="space-between" align="flex-end" wrap="wrap">
         <Title order={1}>{track.name}</Title>
-        <Button type="button" onClick={() => void catchUpAll()} disabled={unreadIds.length === 0}>
+        <Button
+          type="button"
+          variant="default"
+          onClick={() => void catchUpAll()}
+          disabled={unreadIds.length === 0}
+        >
           全部 Caught up にする
         </Button>
       </Group>
-      <Group gap="md" aria-label="Source">
+      <Group gap="lg" aria-label="Source">
         {trackSources.map((source) => (
-          <Anchor key={source.id} href={source.url} target="_blank" rel="noreferrer">
+          <Anchor key={source.id} href={source.url} target="_blank" rel="noreferrer" c="ink.8">
             {source.label}
           </Anchor>
         ))}
       </Group>
-      <Group>
+      <Group align="flex-end" wrap="wrap">
         <Select
           label="種類で絞り込み"
           data={kindFilterOptions}
@@ -113,7 +118,7 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
           }}
         />
         <Checkbox
-          mt="lg"
+          mb={8}
           label="Unread"
           checked={unreadOnly}
           onChange={(event) => {
@@ -121,51 +126,49 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
           }}
         />
       </Group>
-      <Stack component="ul" gap="sm" aria-label="Entry">
+      <Stack
+        component="ul"
+        gap={0}
+        aria-label="Entry"
+        style={{ listStyle: "none", margin: 0, padding: 0 }}
+      >
         {trackEntries.map((entry) => (
-          <Group
-            key={entry.id}
-            component="li"
-            justify="space-between"
-            wrap="nowrap"
-            align="flex-start"
-            pl="sm"
-            style={{
-              borderLeft: entry.caughtUp
-                ? "3px solid transparent"
-                : "3px solid var(--mantine-color-signal-7)",
-            }}
-          >
-            <Stack gap={2}>
-              <Link to="/entries/$entryId" params={{ entryId: entry.id }}>
-                {entry.title}
-              </Link>
-              <Group gap="sm">
-                <Text size="sm" c="dimmed">
-                  {entry.kind}
-                </Text>
-                <Text size="sm" c="dimmed">
-                  {formatJst(entry.publishedAt)}
-                </Text>
-                <Text size="sm" c={entry.caughtUp ? "teal" : "signal.8"}>
-                  {entry.caughtUp ? "Caught up" : "Unread"}
-                </Text>
-              </Group>
-              <Text size="sm">{entry.summary}</Text>
-            </Stack>
-            <Checkbox
-              label="Caught up"
-              aria-label={`Caught up ${entry.title}`}
-              checked={entry.caughtUp}
-              onChange={(event) => {
-                void catchUp(entry.id, event.currentTarget.checked);
-              }}
-            />
-          </Group>
+          <Box key={entry.id} component="li" py="lg" style={{ borderTop: "1px solid #e6e7ea" }}>
+            <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+              <Stack gap={8} style={{ flex: "1 1 16rem" }}>
+                <Group gap="sm" align="center">
+                  {entry.caughtUp ? null : (
+                    <Box aria-hidden w={7} h={7} bg="ink.8" style={{ borderRadius: 1 }} />
+                  )}
+                  <Text size="sm" c="dimmed">
+                    {formatJst(entry.publishedAt)}
+                  </Text>
+                  <Text size="sm">{entry.kind}</Text>
+                  <Text size="sm" fw={entry.caughtUp ? 400 : 600}>
+                    {entry.caughtUp ? "Caught up" : "Unread"}
+                  </Text>
+                </Group>
+                <Title order={2}>
+                  <Link className="log-link" to="/entries/$entryId" params={{ entryId: entry.id }}>
+                    {entry.title}
+                  </Link>
+                </Title>
+                <Text lh={1.7}>{entry.summary}</Text>
+              </Stack>
+              <Checkbox
+                label="Caught up"
+                aria-label={`Caught up ${entry.title}`}
+                checked={entry.caughtUp}
+                onChange={(event) => {
+                  void catchUp(entry.id, event.currentTarget.checked);
+                }}
+              />
+            </Group>
+          </Box>
         ))}
       </Stack>
       {trackEntries.length === 0 ? <Text>この絞り込みに Entry はありません。</Text> : null}
-      <section aria-label="Entry を追加">
+      <section aria-label="Entry を追加" style={{ borderTop: "1px solid #e6e7ea", paddingTop: 28 }}>
         <Title order={2} size="h3" mb="sm">
           Entry を追加
         </Title>

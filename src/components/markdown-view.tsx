@@ -191,7 +191,11 @@ function MarkdownBlockView({ block }: { readonly block: MarkdownBlock }) {
         </Code>
       );
     case "paragraph":
-      return <Text mt="sm">{renderInline(block.text, block.key)}</Text>;
+      return (
+        <Text mt="sm" lh={1.75}>
+          {renderInline(block.text, block.key)}
+        </Text>
+      );
     default: {
       const unreachable: never = block;
       return unreachable;
