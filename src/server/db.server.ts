@@ -6,7 +6,7 @@ import * as schema from "../db/schema";
 
 export type Db = LibSQLDatabase<typeof schema>;
 
-export class DatabaseUnconfigured extends Schema.TaggedError<DatabaseUnconfigured>()(
+class DatabaseUnconfigured extends Schema.TaggedError<DatabaseUnconfigured>()(
   "DatabaseUnconfigured",
   {},
 ) {}
@@ -15,6 +15,23 @@ export class DatabaseError extends Schema.TaggedError<DatabaseError>()("Database
   message: Schema.String,
   cause: Schema.Defect(),
 }) {}
+
+export class RecordNotFound extends Schema.TaggedError<RecordNotFound>()("RecordNotFound", {
+  message: Schema.String,
+}) {}
+
+export class RecordRejected extends Schema.TaggedError<RecordRejected>()("RecordRejected", {
+  message: Schema.String,
+  cause: Schema.Defect(),
+}) {}
+
+export type StoreError = DatabaseUnconfigured | DatabaseError | RecordNotFound | RecordRejected;
+
+export const isStoreError = (cause: unknown): cause is StoreError =>
+  cause instanceof DatabaseUnconfigured ||
+  cause instanceof DatabaseError ||
+  cause instanceof RecordNotFound ||
+  cause instanceof RecordRejected;
 
 export class Database extends Context.Service<Database, { readonly db: Db }>()(
   "space-x-changelogs/server/Database",

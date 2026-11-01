@@ -6,10 +6,10 @@ SpaceXAI 関連のプロダクト（Cursor・Grok Bot・pstack）の更新情報
 
 ## 誰が何をするか
 
-| 役割 | すること |
-| --- | --- |
-| **ユーザー**（1人） | Track 画面で Entry を読み、Caught up にし、Memo を書く。必要なら Entry を手で追加・編集・削除する。Track と Source を増やす。 |
-| **Watcher**（Grok Bot 上に Track ごと1体） | Source を監視し、更新を見つけたら Entry フォームを操作して Ingest する。毎日ではなく更新を見つけたときに動く。 |
+| 役割                                       | すること                                                                                                                      |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| **ユーザー**（1人）                        | Track 画面で Entry を読み、Caught up にし、Memo を書く。必要なら Entry を手で追加・編集・削除する。Track と Source を増やす。 |
+| **Watcher**（Grok Bot 上に Track ごと1体） | Source を監視し、更新を見つけたら Entry フォームを操作して Ingest する。毎日ではなく更新を見つけたときに動く。                |
 
 現在の Watcher:
 
@@ -19,11 +19,11 @@ SpaceXAI 関連のプロダクト（Cursor・Grok Bot・pstack）の更新情報
 
 ## Track と Source
 
-| Track | Source |
-| --- | --- |
-| **Cursor** | [Cursor changelog](https://cursor.com/changelog) / [日本語版](https://cursor.com/ja/changelog) / [page 2 以降](https://cursor.com/changelog/page/2) / [@cursor_ai](https://x.com/cursor_ai) |
+| Track        | Source                                                                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Cursor**   | [Cursor changelog](https://cursor.com/changelog) / [日本語版](https://cursor.com/ja/changelog) / [page 2 以降](https://cursor.com/changelog/page/2) / [@cursor_ai](https://x.com/cursor_ai)      |
 | **Grok Bot** | [Grok Bot changelog](https://x.ai/changelog/bot)（RSS あり）/ [Bot Marketplace](https://x.ai/bot/marketplace) / [@bot](https://x.com/bot) / X 上で共有された Grok Bot（`https://x.ai/bot/<id>`） |
-| **pstack** | [cursor/plugins](https://github.com/cursor/plugins) の `pstack/` 配下を変更した PR |
+| **pstack**   | [cursor/plugins](https://github.com/cursor/plugins) の `pstack/` 配下を変更した PR                                                                                                               |
 
 Track と Source はアプリの UI から追加・編集できる。**Track を増やす手順**:
 
@@ -34,24 +34,24 @@ Track と Source はアプリの UI から追加・編集できる。**Track を
 
 Track について登録される情報の最小単位。種類は4つ:
 
-| 種類 | 中身 |
-| --- | --- |
-| **Release** | changelog の1項目 |
-| **X Post** | X の投稿1本 |
+| 種類             | 中身                                                     |
+| ---------------- | -------------------------------------------------------- |
+| **Release**      | changelog の1項目                                        |
+| **X Post**       | X の投稿1本                                              |
 | **Bot Template** | Bot Marketplace のボット、または X で共有されたボット1つ |
-| **Pull Request** | `cursor/plugins` の `pstack/` 配下を変更した PR 1件 |
+| **Pull Request** | `cursor/plugins` の `pstack/` 配下を変更した PR 1件      |
 
 Entry フォームの項目（ユーザーも Watcher も同じフォームを使う）:
 
-| 項目 | 必須 | 備考 |
-| --- | --- | --- |
-| Track | ✓ | 選択 |
-| 種類 | ✓ | 選択 |
-| 原文タイトル | ✓ | |
-| 原文 URL | ✓ | **同一性キー**。同じ URL なら新規作成ではなく上書き更新 |
-| 公開日時 | ✓ | JST。時刻が不明なら 00:00 |
-| 要約 | ✓ | テキストエリア（1〜3文、日本語） |
-| 本文 | | テキストエリア。Markdown として表示 |
+| 項目         | 必須 | 備考                                                    |
+| ------------ | ---- | ------------------------------------------------------- |
+| Track        | ✓    | 選択                                                    |
+| 種類         | ✓    | 選択                                                    |
+| 原文タイトル | ✓    |                                                         |
+| 原文 URL     | ✓    | **同一性キー**。同じ URL なら新規作成ではなく上書き更新 |
+| 公開日時     | ✓    | JST。時刻が不明なら 00:00                               |
+| 要約         | ✓    | テキストエリア（1〜3文、日本語）                        |
+| 本文         |      | テキストエリア。Markdown として表示                     |
 
 ルール:
 
@@ -75,19 +75,19 @@ Entry フォームの項目（ユーザーも Watcher も同じフォームを�
 
 ## 画面
 
-| 画面 | 内容 |
-| --- | --- |
+| 画面                              | 内容                                                                                                                                                                       |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Track 画面**（Track ごとに1つ） | その Track の Entry を公開日時の新しい順に表示。種類・Unread で絞り込み。上部に Source を参考リンクとして表示。「Entry を追加」フォーム、「全部 Caught up にする」ボタン。 |
-| **Entry 詳細** | 本文・原文リンク・Caught up トグル・Memo 一覧と追加・編集・削除。 |
-| **Track 管理** | Track と Source の追加・編集。 |
-| **Spotlight**（⌘K） | 全 Track 横断のキーワード検索（原文タイトル・要約・本文・Memo が対象）。結果を選ぶと Entry 詳細へ。Track 画面への移動もアクションとして並ぶ。 |
+| **Entry 詳細**                    | 本文・原文リンク・Caught up トグル・Memo 一覧と追加・編集・削除。                                                                                                          |
+| **Track 管理**                    | Track と Source の追加・編集。                                                                                                                                             |
+| **Spotlight**（⌘K）               | 全 Track 横断のキーワード検索（原文タイトル・要約・本文・Memo が対象）。結果を選ぶと Entry 詳細へ。Track 画面への移動もアクションとして並ぶ。                              |
 
 横断タイムラインは持たない。Track 画面が入口。
 
 ## 認証
 
-- Basic 認証。ID/パスワードは1組だけで環境変数から読む。
-- 環境変数が未設定なら認証なし（開発時）。設定されていれば Watcher が使うフォームを含む全ページに掛かる。
+- Basic 認証。ID/パスワードは1組だけで環境変数から読む（`BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD`）。
+- 環境変数が未設定なら認証なし（開発時）。設定されていれば Watcher が使うフォームを含む全ページと、Turso を読む・書く server function に掛かる。同一オリジンの CSRF チェックは認証ではない。
 - Watcher にはユーザーと同じ ID/パスワードを渡す。
 
 ## スコープ外
@@ -100,17 +100,17 @@ Entry フォームの項目（ユーザーも Watcher も同じフォームを�
 
 ## 技術
 
-| 領域 | 選択 |
-| --- | --- |
-| フレームワーク | TanStack Start（file-based router、typed server functions） |
-| ツールチェーン | Vite+（`vp`） |
-| ドメイン層 | Effect v4（`Effect.fn`、`Schema.TaggedError`） |
-| UI | Mantine 9 + StyleX、`@mantine/tiptap`（Memo）、`@mantine/spotlight`（検索） |
-| バリデーション / フォーム | Valibot + formisch |
-| DB | Turso。サーバー側は Drizzle ORM（ドライバは `@libsql/client/web`、`drizzle-kit` でマイグレーション）を Effect サービス `Database` として包み、クライアント側は TanStack DB のコレクションとして扱う（[ADR 0002](./docs/adr/0002-tanstack-db-for-client-state.md)） |
-| 日時 | Temporal API、JST |
-| デプロイ | Cloudflare Workers（Nitro `cloudflare` プリセット） |
-| パッケージマネージャ | pnpm |
+| 領域                      | 選択                                                                                                                                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| フレームワーク            | TanStack Start（file-based router、typed server functions）                                                                                                                                                                                                        |
+| ツールチェーン            | Vite+（`vp`）                                                                                                                                                                                                                                                      |
+| ドメイン層                | Effect v4（`Effect.fn`、`Schema.TaggedError`）                                                                                                                                                                                                                     |
+| UI                        | Mantine 9 + StyleX、`@mantine/tiptap`（Memo）、`@mantine/spotlight`（検索）                                                                                                                                                                                        |
+| バリデーション / フォーム | Valibot + formisch                                                                                                                                                                                                                                                 |
+| DB                        | Turso。サーバー側は Drizzle ORM（ドライバは `@libsql/client/web`、`drizzle-kit` でマイグレーション）を Effect サービス `Database` として包み、クライアント側は TanStack DB のコレクションとして扱う（[ADR 0002](./docs/adr/0002-tanstack-db-for-client-state.md)） |
+| 日時                      | Temporal API、JST                                                                                                                                                                                                                                                  |
+| デプロイ                  | Nitro プリセット `node-server`（Node.js）                                                                                                                                                                                                                          |
+| パッケージマネージャ      | pnpm                                                                                                                                                                                                                                                               |
 
 ## 開発
 
@@ -125,6 +125,7 @@ pnpm dev
 
 - `TURSO_DATABASE_URL` — `turso db show --url <database>`
 - `TURSO_AUTH_TOKEN` — `turso db tokens create <database>`
+- `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` — 未設定なら開発中は認証なし。両方あるときだけ Basic 認証が掛かる
 
 スキーマは `src/db/schema.ts`、drizzle-kit の設定は `drizzle.config.ts`。`pnpm db:generate` がマイグレーションを `drizzle/` に生成し、`pnpm db:migrate` が Turso に適用する。
 
@@ -136,7 +137,7 @@ pnpm build
 pnpm start
 ```
 
-`pnpm format` は `vp fmt`（oxfmt）、`pnpm lint` は `vp lint`（oxlint）。設定は `vite.config.ts` にある。`pnpm start` は `node .output/server/index.mjs` を実行する。
+`pnpm format` は `vp fmt`（oxfmt）、`pnpm lint` は `vp lint`（oxlint）。設定は `vite.config.ts` にある。`pnpm dev`、`pnpm db:migrate`、`pnpm start` はどれも `.env` を読む。`pnpm start` は `node --env-file-if-exists=.env .output/server/index.mjs` を実行する。
 
 ```bash
 pnpm test:e2e

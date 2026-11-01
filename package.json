@@ -10,7 +10,7 @@
     "generate-routes": "tsr generate",
     "build": "vp build",
     "preview": "vp preview",
-    "start": "node .output/server/index.mjs",
+    "start": "node --env-file-if-exists=.env .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
     "format": "vp fmt",
     "lint": "vp lint",
