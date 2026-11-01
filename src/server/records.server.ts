@@ -145,10 +145,10 @@ export const updateProjects = Effect.fn("updateProjects")(function* (
 
   const { db } = yield* Database;
   return yield* mutate(db, "Could not update the project.", async (tx) => {
-    // Rows share one transaction, so the statements run in order.
-    // react-doctor-disable-next-line react-doctor/async-await-in-loop
     for (const row of rows) {
       if (row.changes.name !== undefined) {
+        // Rows share one transaction, so the statements run in order.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         await tx.update(projects).set({ name: row.changes.name }).where(eq(projects.id, row.id));
       }
     }
@@ -202,11 +202,11 @@ export const updateEntries = Effect.fn("updateEntries")(function* (
 
   const { db } = yield* Database;
   return yield* mutate(db, "Could not update the entry.", async (tx) => {
-    // Rows share one transaction, so the statements run in order.
-    // react-doctor-disable-next-line react-doctor/async-await-in-loop
     for (const row of rows) {
       const changes = pickEntryChanges(row.changes);
       if (Object.keys(changes).length > 0) {
+        // Rows share one transaction, so the statements run in order.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         await tx.update(entries).set(changes).where(eq(entries.id, row.id));
       }
     }
