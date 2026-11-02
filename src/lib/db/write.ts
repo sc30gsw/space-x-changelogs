@@ -81,7 +81,7 @@ const requireEntry = async (tx: Tx, id: string): Promise<Entry> => {
   const rows = await tx.select().from(entries).where(eq(entries.id, id)).limit(1);
   const row = rows[0];
   if (row === undefined) {
-    throw new Error(`Entry ${id} was not found after write.`);
+    throw new RecordNotFound({ message: `Entry ${id} was not found after write.` });
   }
 
   return row;
@@ -195,7 +195,7 @@ const once = async <A>(db: AppDatabase, run: (tx: Tx) => Promise<A>): Promise<A>
     }
   }
 
-  throw new Error("Entry write did not finish.");
+  throw new DatabaseError({ message: "Entry write did not finish.", cause: undefined });
 };
 
 const withWrite = async <A>(db: AppDatabase, run: (tx: Tx) => Promise<A>): Promise<A> => {

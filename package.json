@@ -19,6 +19,7 @@
     "verify:ingest": "tsx scripts/verify-entry-url-identity.ts",
     "verify:lifecycle": "tsx scripts/verify-entry-lifecycle.ts",
     "check:layout": "tsx scripts/check-bulletproof-layout.ts",
+    "check:fence": "tsx scripts/check-import-fence.ts",
     "doctor": "npx react-doctor@latest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
@@ -68,8 +69,7 @@
     "typescript": "^6.0.2",
     "unplugin": "^2.3.11",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "zod": "^4.1.8"
+    "vite-plus": "catalog:"
   },
   "packageManager": "pnpm@10.33.0"
 }
