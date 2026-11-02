@@ -1,7 +1,7 @@
 import { Anchor, Box, Button, Checkbox, Group, Select, Stack, Text, Title } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { submitEntryFn } from "../../../api/records";
+import { catchUp, ingestEntry } from "../../../stores/changelog";
 import { useWorkspace } from "../../../stores/workspace";
 import type { EntryFormValues } from "../../../types/schemas";
 import { entryKinds, entryMatchesKind, isKindFilter, type KindFilter } from "../../../utils/kinds";
@@ -14,7 +14,7 @@ const kindFilterOptions = [
 ];
 
 export function TrackScreen({ slug }: { readonly slug: string }) {
-  const { tracks, sources, entries, entriesCollection, isLoading } = useWorkspace();
+  const { tracks, sources, entries, isLoading } = useWorkspace();
   const track = tracks.find((item) => item.slug === slug);
   const [kind, setKind] = useState<KindFilter>("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -49,38 +49,27 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
     .filter((entry) => entry.trackId === track.id && !entry.caughtUp)
     .map((entry) => entry.id);
 
-  const catchUp = async (id: string, caughtUp: boolean) => {
-    const transaction = entriesCollection.update(id, (draft) => {
-      draft.caughtUp = caughtUp;
-    });
-    await transaction.when("settled");
+  const markCaughtUp = async (id: string, caughtUp: boolean) => {
+    await catchUp([{ id, caughtUp }]);
   };
 
-  const catchUpAll = async () => {
+  const markAllCaughtUp = async () => {
     if (unreadIds.length === 0) {
       return;
     }
-    const transaction = entriesCollection.update(unreadIds, (drafts) => {
-      for (const draft of drafts) {
-        draft.caughtUp = true;
-      }
-    });
-    await transaction.when("settled");
+    await catchUp(unreadIds.map((id) => ({ id, caughtUp: true })));
   };
 
   const addEntry = async (values: EntryFormValues) => {
-    const saved = await submitEntryFn({
-      data: {
-        trackId: values.trackId,
-        kind: values.kind,
-        title: values.title,
-        url: values.url,
-        publishedAt: instantFromJstLocal(values.publishedAt),
-        summary: values.summary,
-        body: values.body,
-      },
+    const saved = await ingestEntry({
+      trackId: values.trackId,
+      kind: values.kind,
+      title: values.title,
+      url: values.url,
+      publishedAt: instantFromJstLocal(values.publishedAt),
+      summary: values.summary,
+      body: values.body,
     });
-    await entriesCollection.utils.writeUpsert(saved);
     setMessage(saved.title);
   };
 
@@ -91,7 +80,7 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
         <Button
           type="button"
           variant="default"
-          onClick={() => void catchUpAll()}
+          onClick={() => void markAllCaughtUp()}
           disabled={unreadIds.length === 0}
         >
           全部 Caught up にする
@@ -159,7 +148,7 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
                 aria-label={`Caught up ${entry.title}`}
                 checked={entry.caughtUp}
                 onChange={(event) => {
-                  void catchUp(entry.id, event.currentTarget.checked);
+                  void markCaughtUp(entry.id, event.currentTarget.checked);
                 }}
               />
             </Group>

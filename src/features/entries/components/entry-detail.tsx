@@ -1,21 +1,22 @@
 import { Anchor, Box, Button, Group, Modal, Stack, Switch, Text, Title } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { submitEntryFn } from "../../../api/records";
+import {
+  catchUp,
+  ingestEntry,
+  removeEntries,
+  removeMemos,
+  saveMemo,
+} from "../../../stores/changelog";
 import { useWorkspace } from "../../../stores/workspace";
 import type { EntryFormValues } from "../../../types/schemas";
-import {
-  formatJst,
-  instantFromJstLocal,
-  jstLocalFromInstant,
-  nowInstant,
-} from "../../../utils/time";
+import { formatJst, instantFromJstLocal, jstLocalFromInstant } from "../../../utils/time";
 import { EntryForm } from "./entry-form";
 import { MarkdownView } from "../../../components/markdown-view";
 import { MemoEditor, memoPlainText, sanitizeMemo } from "../../memos/components/memo-editor";
 
 export function EntryDetail({ entryId }: { readonly entryId: string }) {
-  const { entries, memos, tracks, entriesCollection, memosCollection, isLoading } = useWorkspace();
+  const { entries, memos, tracks, isLoading } = useWorkspace();
   const entry = entries.find((item) => item.id === entryId);
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -47,32 +48,25 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
     );
 
   const toggleCaughtUp = async (caughtUp: boolean) => {
-    const transaction = entriesCollection.update(entry.id, (draft) => {
-      draft.caughtUp = caughtUp;
-    });
-    await transaction.when("settled");
+    await catchUp([{ id: entry.id, caughtUp }]);
   };
 
   const saveEntry = async (values: EntryFormValues) => {
-    const saved = await submitEntryFn({
-      data: {
-        id: entry.id,
-        trackId: values.trackId,
-        kind: values.kind,
-        title: values.title,
-        url: values.url,
-        publishedAt: instantFromJstLocal(values.publishedAt),
-        summary: values.summary,
-        body: values.body,
-      },
+    await ingestEntry({
+      id: entry.id,
+      trackId: values.trackId,
+      kind: values.kind,
+      title: values.title,
+      url: values.url,
+      publishedAt: instantFromJstLocal(values.publishedAt),
+      summary: values.summary,
+      body: values.body,
     });
-    await entriesCollection.utils.writeUpsert(saved);
     setEditing(false);
   };
 
   const removeEntry = async () => {
-    const transaction = entriesCollection.delete(entry.id);
-    await transaction.when("settled");
+    await removeEntries([entry.id]);
     setConfirming(false);
   };
 
@@ -82,30 +76,19 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
       setMessage("Memo を入力してください");
       return;
     }
-    const now = nowInstant();
-    const transaction = memosCollection.insert({
-      id: crypto.randomUUID(),
-      entryId: entry.id,
-      body: html,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await transaction.when("settled");
+    await saveMemo({ id: crypto.randomUUID(), entryId: entry.id, body: html });
     memoHtmlRef.current = "<p></p>";
     setMemoKey((value) => value + 1);
     setMessage(null);
   };
 
-  const saveMemo = async (id: string) => {
+  const editMemo = async (id: string) => {
     const html = editingHtmlRef.current;
     if (memoPlainText(html).length === 0) {
       setMessage("Memo を入力してください");
       return;
     }
-    const transaction = memosCollection.update(id, (draft) => {
-      draft.body = html;
-    });
-    await transaction.when("settled");
+    await saveMemo({ id, entryId: entry.id, body: html });
     setEditingMemoId(null);
   };
 
@@ -187,7 +170,7 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
                     label="Memo を編集"
                   />
                   <Group>
-                    <Button type="button" onClick={() => void saveMemo(memo.id)}>
+                    <Button type="button" onClick={() => void editMemo(memo.id)}>
                       Memo を保存
                     </Button>
                     <Button type="button" variant="default" onClick={() => setEditingMemoId(null)}>
@@ -214,7 +197,7 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
                       color="red"
                       variant="subtle"
                       onClick={() => {
-                        void memosCollection.delete(memo.id).when("settled");
+                        void removeMemos([memo.id]);
                       }}
                     >
                       Memo を削除

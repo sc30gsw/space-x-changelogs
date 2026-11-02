@@ -1,12 +1,7 @@
-import { useLiveQuery, useDbClient, type Collection } from "@tanstack/react-db";
-import { createContext, use, useEffect, useMemo, type ReactNode } from "react";
-import { bindMemoSync, changelogCollections } from "./collections";
+import { useLiveQuery } from "@tanstack/react-db";
+import { createContext, use, useMemo, type ReactNode } from "react";
 import type { Entry, Memo, Source, Track } from "../types/schemas";
-
-type EntryCollection = Collection<Entry, string>;
-type MemoCollection = Collection<Memo, string>;
-type SourceCollection = Collection<Source, string>;
-type TrackCollection = Collection<Track, string>;
+import { changelogCollections } from "./changelog";
 
 type WorkspaceValue = {
   readonly tracks: readonly Track[];
@@ -15,10 +10,6 @@ type WorkspaceValue = {
   readonly memos: readonly Memo[];
   readonly isLoading: boolean;
   readonly isError: boolean;
-  readonly tracksCollection: TrackCollection;
-  readonly sourcesCollection: SourceCollection;
-  readonly entriesCollection: EntryCollection;
-  readonly memosCollection: MemoCollection;
 };
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -30,30 +21,17 @@ const rows = <T extends { readonly id: string }>(
 ): readonly T[] => data ?? noRows;
 
 export function WorkspaceProvider({ children }: { readonly children: ReactNode }) {
-  const client = useDbClient();
-  const memoCollection = client.collection(changelogCollections.memos);
   const trackQuery = useLiveQuery((q) => q.from({ track: changelogCollections.tracks }));
   const sourceQuery = useLiveQuery((q) => q.from({ source: changelogCollections.sources }));
   const entryQuery = useLiveQuery((q) => q.from({ entry: changelogCollections.entries }));
   const memoQuery = useLiveQuery((q) => q.from({ memo: changelogCollections.memos }));
-  const memoRows = rows(memoQuery.data);
-
-  useEffect(() => {
-    bindMemoSync({
-      idsFor: (entryIds) => {
-        const wanted = new Set(entryIds);
-        return memoRows.flatMap((memo) => (wanted.has(memo.entryId) ? [memo.id] : []));
-      },
-      drop: (ids) => memoCollection.utils.writeDelete([...ids]),
-    });
-  }, [memoCollection, memoRows]);
 
   const value = useMemo<WorkspaceValue>(
     () => ({
       tracks: rows(trackQuery.data),
       sources: rows(sourceQuery.data),
       entries: rows(entryQuery.data),
-      memos: memoRows,
+      memos: rows(memoQuery.data),
       isLoading:
         trackQuery.isLoading ||
         sourceQuery.isLoading ||
@@ -64,19 +42,13 @@ export function WorkspaceProvider({ children }: { readonly children: ReactNode }
         sourceQuery.isLoadingError ||
         entryQuery.isLoadingError ||
         memoQuery.isLoadingError,
-      tracksCollection: client.collection(changelogCollections.tracks),
-      sourcesCollection: client.collection(changelogCollections.sources),
-      entriesCollection: client.collection(changelogCollections.entries),
-      memosCollection: memoCollection,
     }),
     [
-      client,
       entryQuery.data,
       entryQuery.isLoading,
       entryQuery.isLoadingError,
-      memoCollection,
+      memoQuery.data,
       memoQuery.isLoading,
-      memoRows,
       memoQuery.isLoadingError,
       sourceQuery.data,
       sourceQuery.isLoading,
