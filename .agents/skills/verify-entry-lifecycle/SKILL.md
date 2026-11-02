@@ -19,16 +19,16 @@ pnpm verify:lifecycle
 
 ## Coverage
 
-Sync commit: `cf5003067d0adfc88a6e9ee389e50987e5e88b33`
+Sync commit: `19e491454838a7a40bdc434328b9e1ebc4d20a03`
 
 このコミットで、チェックが次の実装をそのまま呼んでいることを確認した。対象ファイルがこのコミットより後に変わっていたら、先に `pnpm verify:lifecycle` を実行し、チェックがまだその実装を説明していると確認してから sync commit を進める。ずれを戻すときは `/maintain-formal-verification-skill` を使う。
 
 | ファイル | 関数 |
 | --- | --- |
-| `src/lib/submit-entry.ts` | `submitEntry`, `submitInTx`, `overwrite`, `insertUnread`, `withTransaction`, `setCaughtUp`, `insertMemo`, `deleteEntries` |
+| `src/lib/submit-entry.ts` | `submitEntry`, `submitInTx`, `overwrite`, `insertUnread`, `withWrite`, `setCaughtUp`, `insertMemo`, `deleteEntries` |
 | `scripts/verify-entry-lifecycle.ts` | 画面の操作順、同じ URL への同時上書き、24 列の生成 |
 
-`overwrite` の `update` は `contentOf` だけを書く。`caughtUp` はそこには無い。`setCaughtUp` は `caughtUp` と `updatedAt` だけを書く。`deleteEntries` は対象 id の Memo を消してから、その Entry を消す。空の id 配列は何もしない。
+`overwrite` の `update` は `contentOf` だけを書く。`caughtUp` はそこには無い。`setCaughtUp` は渡した id 全部の `caughtUp` と `updatedAt` だけを、1 つのトランザクションで書く。その中に無い id があると全部戻る。`deleteEntries` は対象 id の Memo を消してから、その Entry を消す。空の id 配列は何もしない。
 
 画面順の前に、Cursor の Source を 1 件入れ、Drizzle の関係型 `TrackWithSources`、`SourceWithTrack`、`EntryWithMemos`、`MemoWithEntry` で読み戻す。行の型は `tracks`、`sources`、`entries`、`memos` の `$inferSelect` である。
 
@@ -38,13 +38,14 @@ Sync commit: `cf5003067d0adfc88a6e9ee389e50987e5e88b33`
 - 操作は Ingest（新規、同じ URL の上書き、空いている URL への id 付き編集）、Caught up、Memo の追加、Entry の削除。
 - その前の画面順は、Unread のままの読み直し、Caught up、Memo、同じ URL の上書き、残す Entry への Memo、同じ URL への同時上書き、対象 Entry の削除、空の削除。
 - DB は `file:` の sqlite。外部キーは ON。これはアプリの `prepare` と同じである。
-- 同時上書きは 1 プロセスの `withTransaction` の中で順番に終わる。すべてのインターリーブではない。
+- 同時上書きは 1 プロセスの `withWrite` の中で順番に終わる。すべてのインターリーブではない。
+- 生成列の後に、存在する id と存在しない id を 1 回の `setCaughtUp` に渡す。無い id で失敗し、存在する行は Unread のままである。
 
 これはこの範囲の生成入力で、関数の戻り値と読み直した行がモデルと一致することである。すべての長さの列ではない。
 
 ## 壊し方
 
-`setCaughtUp` の `.set` に `title: "scratch"` を足す。`pnpm verify:lifecycle` は `setCaughtUp of … changed title` で失敗する。
+`setCaughtUp` の `.set` に `title: "scratch"` を足す。`pnpm verify:lifecycle` は `setCaughtUp of … changed title` で失敗する。id ごとに別トランザクションへ戻すと、無い id の前に書いた行が残り、`a failed Caught up left an earlier row Caught up` で失敗する。
 
 `overwrite` の `.set(contentOf(input))` を `.set({ ...contentOf(input), caughtUp: false })` に変える。失敗は `overwrite of https://example.test/a moved id or Caught up` である。
 

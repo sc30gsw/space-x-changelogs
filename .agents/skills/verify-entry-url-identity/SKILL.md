@@ -19,13 +19,13 @@ pnpm verify:ingest
 
 ## Coverage
 
-Sync commit: `cf5003067d0adfc88a6e9ee389e50987e5e88b33`
+Sync commit: `19e491454838a7a40bdc434328b9e1ebc4d20a03`
 
 このコミットで、チェックが次の実装をそのまま呼んでいることを確認した。対象ファイルがこのコミットより後に変わっていたら、先に `pnpm verify:ingest` を実行し、チェックがまだその実装を説明していると確認してから sync commit を進める。ずれを戻すときは `/maintain-formal-verification-skill` を使う。
 
 | ファイル | 関数 |
 | --- | --- |
-| `src/lib/submit-entry.ts` | `submitEntry`, `submitInTx`, `overwrite`, `insertUnread`, `withTransaction`, `setCaughtUp`, `insertMemo` |
+| `src/lib/submit-entry.ts` | `submitEntry`, `submitInTx`, `overwrite`, `insertUnread`, `withWrite`, `setCaughtUp`, `insertMemo` |
 | `scripts/verify-entry-url-identity.ts` | 生成列、逐次の上書き、同じ URL への同時 `submitEntry` |
 
 `overwrite` の `update` は `contentOf` だけを書く。`caughtUp` はそこには無い。`insertUnread` だけが `caughtUp: false` を書く。同じ URL の再送は `findByUrl` の行を上書きする。URL の UNIQUE で insert が負けたときも、勝った行を上書きする。
@@ -36,7 +36,7 @@ Sync commit: `cf5003067d0adfc88a6e9ee389e50987e5e88b33`
 - その前に、1 件を Caught up にして Memo を 1 つ付け、同じ URL を再送する。
 - 同じ URL への `submitEntry` を 2 つ同時に始める。空の URL への同時 Ingest と、Caught up と Memo の後の同時上書き。
 - DB は `file:` の sqlite。接続は 8、busy timeout は 0。`:memory:` は接続を 1 本しか持てず、同時 Ingest が始まらない。
-- 1 プロセスの中では `withTransaction` が同じクライアントの書き込みを順番に通す。sqlite がそれでも `SQLITE_BUSY` か `TRANSACTION_ACTIVE` を返したら、スレッドを止めずに待ってから同じ関数をやり直す。libsql の busy timeout は、コミットする側のスレッドを止めてしまう。
+- 1 プロセスの中では `withWrite` が同じクライアントの書き込みを順番に通す。sqlite がそれでも `SQLITE_BUSY` か `TRANSACTION_ACTIVE` を返したら、スレッドを止めずに待ってから同じ関数をやり直す。libsql の busy timeout は、コミットする側のスレッドを止めてしまう。
 
 これはこの範囲の生成入力で、関数の戻り値と読み直した行がモデルと一致することである。すべてのインターリーブや、すべての長さの列ではない。
 
