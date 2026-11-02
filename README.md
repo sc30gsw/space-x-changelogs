@@ -109,7 +109,7 @@ Entry フォームの項目（ユーザーも Watcher も同じフォームを�
 | バリデーション / フォーム | Valibot + formisch                                                                                                                                                                                                                                                 |
 | DB                        | Turso。サーバー側は Drizzle ORM（ドライバは `@libsql/client/web`、`drizzle-kit` でマイグレーション）を Effect サービス `Database` として包み、クライアント側は TanStack DB のコレクションとして扱う（[ADR 0002](./docs/adr/0002-tanstack-db-for-client-state.md)） |
 | 日時                      | Temporal API、JST                                                                                                                                                                                                                                                  |
-| デプロイ | Cloudflare Workers（Nitro `cloudflare` プリセット）                                                                                                                                                                                                                        |
+| デプロイ                  | Node。`vite.config.ts` は `nitro()` をプリセットなしで呼ぶ。`pnpm start` が `.output/server/index.mjs` を起動する                                                                                                                                                  |
 | パッケージマネージャ      | pnpm                                                                                                                                                                                                                                                               |
 
 ## 開発
@@ -127,7 +127,7 @@ pnpm dev
 - `TURSO_AUTH_TOKEN` — `turso db tokens create <database>`
 - `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` — 未設定なら開発中は認証なし。両方あるときだけ Basic 認証が掛かる
 
-スキーマは `src/db/schema.ts`、drizzle-kit の設定は `drizzle.config.ts`。`pnpm db:generate` がマイグレーションを `drizzle/` に生成し、`pnpm db:migrate` が Turso に適用する。
+スキーマは `src/lib/db/schema.ts`、drizzle-kit の設定は `drizzle.config.ts`。`pnpm db:generate` がマイグレーションを `drizzle/` に生成し、`pnpm db:migrate` が Turso に適用する。
 
 ```bash
 pnpm typecheck

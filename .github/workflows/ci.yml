@@ -32,4 +32,8 @@ jobs:
         name: Dead code
         run: pnpm dead-code --format github-annotations
         background: true
+      - id: layout
+        name: Layout
+        run: pnpm check:layout
+        background: true
       - wait-all:

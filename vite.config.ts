@@ -25,7 +25,7 @@ const config = defineConfig({
       ".mcp.json",
       "e2e.config.ts",
       "skills-lock.json",
-      "src/routeTree.gen.ts",
+      "src/app/routeTree.gen.ts",
       "tests/**",
     ],
   },
@@ -37,7 +37,7 @@ const config = defineConfig({
       ".mcp.json",
       "e2e.config.ts",
       "skills-lock.json",
-      "src/routeTree.gen.ts",
+      "src/app/routeTree.gen.ts",
       "tests/**",
     ],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
@@ -45,7 +45,19 @@ const config = defineConfig({
     options: { typeAware: true, typeCheck: true },
   },
   resolve: { tsconfigPaths: true },
-  plugins: lazyPlugins(() => [tanstackStart(), nitro(), stylexPlugin, viteReact()]),
+  plugins: lazyPlugins(() => [
+    tanstackStart({
+      router: {
+        routesDirectory: "app/routes",
+        generatedRouteTree: "app/routeTree.gen.ts",
+        entry: "app/router.tsx",
+      },
+      start: { entry: "app/start.ts" },
+    }),
+    nitro(),
+    stylexPlugin,
+    viteReact(),
+  ]),
 });
 
 export default config;

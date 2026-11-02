@@ -1,0 +1,24 @@
+# Learning more about Effect
+
+This repository uses the Effect Typescript library.
+
+Before writing any Effect code, first read `node_modules/effect/AGENTS.md`
+**completely**, and follow the links in the file when required.
+
+If you need to learn more about particular Effect apis and concepts that the
+guide doesn't cover, search through the source code in `node_modules/effect/src`.
+
+## Write path
+
+Screens call these functions from `src/stores/changelog.ts`: `ingestEntry`, `catchUp`, `saveTrack`, `saveSource`, `saveMemo`, `removeEntries`, `removeMemos`.
+
+| Pitfall                                       | Allowed pattern                                                                                                      | Command                                                                                                                                                                                                                               |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hand-synced field lists                       | The row type is the Drizzle `$inferSelect`.                                                                          | `pnpm check:fence` exits 1 when `src` contains `entrySchema` or `pickTrackChanges`.                                                                                                                                                   |
+| Two write doors for one Entry                 | Those seven functions are the write path.                                                                            | `pnpm check:fence` exits 1 when `src` contains `submitEntryFn`.                                                                                                                                                                       |
+| Partial commit against an optimistic rollback | `catchUp` writes one list in one transaction.                                                                        | `pnpm check:fence` exits 1 when `src` contains `setCaughtUpFn`. `tsx scripts/verify-catch-up-transaction.ts` exits 1 when a missing id changes another row.                                                                           |
+| A client per request                          | `src/lib/db/database.ts` keeps one client in a process `Map`.                                                        | `pnpm check:fence` exits 1 when another file under `src` contains `createClient`.                                                                                                                                                     |
+| Untagged Error beside StoreError              | `src/lib/db/write.ts` throws `RecordNotFound` or `DatabaseError`. `runHttp` maps the status.                         | `pnpm check:fence` exits 1 when `src/lib` contains `throw new Error`.                                                                                                                                                                 |
+| String replace then innerHTML                 | `sanitizeMemo` in `src/lib/memo-html.ts` is the allowlist. `entry-detail.tsx` has the one `dangerouslySetInnerHTML`. | `tsx scripts/verify-memo-html.ts` exits 1 when the Chrome report has a `nextFails` row, an `on*` attribute, a `script` element, or a `javascript:` URL. `pnpm check:fence` exits 1 when `src` has a second `dangerouslySetInnerHTML`. |
+| Dead code an agent can import                 | `package.json` has no `zod` dependency.                                                                              | `pnpm check:fence` exits 1 when `package.json` depends on `zod`.                                                                                                                                                                      |
+| CI experiments that landed                    | Workflow jobs are separate steps.                                                                                    | `pnpm check:fence` exits 1 when a workflow file has a `parallel:` key.                                                                                                                                                                |

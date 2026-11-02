@@ -1,4 +1,19 @@
 /* Production CSS entry. StyleX appends compiled rules to this file. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+}
+
+body {
+  background: #fbfbfc;
+  color: #16191d;
+}
+
+a.log-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.log-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
 }
