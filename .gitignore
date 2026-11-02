@@ -8,6 +8,8 @@ dist-ssr/
 .vinxi/
 *.local
 .env
+.dev.vars
+.dev.vars.*
 .DS_Store
 __unconfig*
 .e2e/results/

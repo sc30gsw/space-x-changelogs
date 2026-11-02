@@ -11,6 +11,7 @@
     "build": "vp build",
     "preview": "vp preview",
     "start": "node --env-file-if-exists=.env .output/server/index.mjs",
+    "deploy": "SERVER_HOST=cloudflare-workers vp build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "format": "vp fmt",
     "lint": "vp lint",
@@ -49,6 +50,7 @@
     "valibot": "^1.5.0"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "1.67.0",
     "@e2e-dev/web": "^0.15.4",
     "@stylexjs/unplugin": "^0.19.1",
     "@tanstack/router-cli": "^1.132.0",
@@ -69,7 +71,8 @@
     "typescript": "^6.0.2",
     "unplugin": "^2.3.11",
     "vite": "catalog:",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "wrangler": "4.156.1"
   },
   "packageManager": "pnpm@10.33.0"
 }
