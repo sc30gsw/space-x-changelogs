@@ -109,7 +109,7 @@ Entry フォームの項目（ユーザーも Watcher も同じフォームを�
 | バリデーション / フォーム | Valibot + formisch                                                                                                                                                                                                                                                 |
 | DB                        | Turso。サーバー側は Drizzle ORM（ドライバは `@libsql/client/web`、`drizzle-kit` でマイグレーション）を Effect サービス `Database` として包み、クライアント側は TanStack DB のコレクションとして扱う（[ADR 0002](./docs/adr/0002-tanstack-db-for-client-state.md)） |
 | 日時                      | Temporal API、JST                                                                                                                                                                                                                                                  |
-| デプロイ                  | Cloudflare Workers（Nitro `cloudflare` プリセット）                                                                                                                                                                                                                |
+| デプロイ                  | Node。`vite.config.ts` は `nitro()` をプリセットなしで呼ぶ。`pnpm start` が `.output/server/index.mjs` を起動する                                                                                                                                                  |
 | パッケージマネージャ      | pnpm                                                                                                                                                                                                                                                               |
 
 ## 開発
