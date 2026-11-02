@@ -259,10 +259,10 @@ const oneMemo = async (tx: Tx, id: string): Promise<Memo> => {
   return row;
 };
 
-export const ingestEntry = (db: AppDatabase, input: IngestWrite): Promise<Entry> =>
+export const commitIngest = (db: AppDatabase, input: IngestWrite): Promise<Entry> =>
   withWrite(db, (tx) => ingestInTx(tx, input));
 
-export const catchUp = (
+export const commitCatchUp = (
   db: AppDatabase,
   marks: readonly CaughtUpMark[],
   now: string,
@@ -295,7 +295,7 @@ export const catchUp = (
   });
 };
 
-export const saveTrack = (db: AppDatabase, input: TrackSave): Promise<Track> =>
+const commitTrack = (db: AppDatabase, input: TrackSave): Promise<Track> =>
   withWrite(db, async (tx) => {
     const existing = await tx
       .select({ id: tracks.id })
@@ -313,7 +313,7 @@ export const saveTrack = (db: AppDatabase, input: TrackSave): Promise<Track> =>
     return oneTrack(tx, input.id);
   });
 
-export const saveSource = (db: AppDatabase, input: SourceSave): Promise<Source> =>
+const commitSource = (db: AppDatabase, input: SourceSave): Promise<Source> =>
   withWrite(db, async (tx) => {
     const existing = await tx
       .select({ id: sources.id })
@@ -338,7 +338,7 @@ export const saveSource = (db: AppDatabase, input: SourceSave): Promise<Source> 
     return oneSource(tx, input.id);
   });
 
-export const saveMemo = (db: AppDatabase, input: MemoWrite): Promise<Memo> =>
+export const commitMemo = (db: AppDatabase, input: MemoWrite): Promise<Memo> =>
   withWrite(db, async (tx) => {
     const existing = await tx
       .select({ id: memos.id })
@@ -362,7 +362,7 @@ export const saveMemo = (db: AppDatabase, input: MemoWrite): Promise<Memo> =>
     return oneMemo(tx, input.id);
   });
 
-export const removeEntries = (db: AppDatabase, ids: readonly string[]): Promise<void> => {
+export const commitRemoveEntries = (db: AppDatabase, ids: readonly string[]): Promise<void> => {
   if (ids.length === 0) {
     return Promise.resolve();
   }
@@ -373,7 +373,7 @@ export const removeEntries = (db: AppDatabase, ids: readonly string[]): Promise<
   });
 };
 
-export const removeMemos = (db: AppDatabase, ids: readonly string[]): Promise<void> => {
+const commitRemoveMemos = (db: AppDatabase, ids: readonly string[]): Promise<void> => {
   if (ids.length === 0) {
     return Promise.resolve();
   }
@@ -412,7 +412,7 @@ export const readMemos = readRows(
 export const ingestEntryEffect = Effect.fn("ingestEntry")(function* (input: IngestEntry) {
   const { db } = yield* Database;
   return yield* query(
-    () => ingestEntry(db, { ...input, now: nowInstant() }),
+    () => commitIngest(db, { ...input, now: nowInstant() }),
     "Could not ingest the entry.",
   );
 });
@@ -423,23 +423,23 @@ export const catchUpEffect = Effect.fn("catchUp")(function* (marks: readonly Cau
   }
 
   const { db } = yield* Database;
-  return yield* query(() => catchUp(db, marks, nowInstant()), "Could not update Caught up.");
+  return yield* query(() => commitCatchUp(db, marks, nowInstant()), "Could not update Caught up.");
 });
 
 export const saveTrackEffect = Effect.fn("saveTrack")(function* (input: TrackSave) {
   const { db } = yield* Database;
-  return yield* query(() => saveTrack(db, input), "Could not save the track.");
+  return yield* query(() => commitTrack(db, input), "Could not save the track.");
 });
 
 export const saveSourceEffect = Effect.fn("saveSource")(function* (input: SourceSave) {
   const { db } = yield* Database;
-  return yield* query(() => saveSource(db, input), "Could not save the source.");
+  return yield* query(() => commitSource(db, input), "Could not save the source.");
 });
 
 export const saveMemoEffect = Effect.fn("saveMemo")(function* (input: MemoSave) {
   const { db } = yield* Database;
   return yield* query(
-    () => saveMemo(db, { ...input, now: nowInstant() }),
+    () => commitMemo(db, { ...input, now: nowInstant() }),
     "Could not save the memo.",
   );
 });
@@ -450,7 +450,7 @@ export const removeEntriesEffect = Effect.fn("removeEntries")(function* (ids: re
   }
 
   const { db } = yield* Database;
-  yield* query(() => removeEntries(db, ids), "Could not delete the entry.");
+  yield* query(() => commitRemoveEntries(db, ids), "Could not delete the entry.");
 });
 
 export const removeMemosEffect = Effect.fn("removeMemos")(function* (ids: readonly string[]) {
@@ -459,5 +459,5 @@ export const removeMemosEffect = Effect.fn("removeMemos")(function* (ids: readon
   }
 
   const { db } = yield* Database;
-  yield* query(() => removeMemos(db, ids), "Could not delete the memo.");
+  yield* query(() => commitRemoveMemos(db, ids), "Could not delete the memo.");
 });

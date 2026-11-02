@@ -6,7 +6,11 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql/web";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { databaseSchema, entries, memos, tracks, type AppDatabase } from "../src/lib/db/schema.ts";
-import { catchUp as commitCatchUp, ingestEntry, saveMemo } from "../src/lib/db/write.ts";
+import {
+  commitCatchUp,
+  commitIngest as ingestEntry,
+  commitMemo as saveMemo,
+} from "../src/lib/db/write.ts";
 import { entryKinds } from "../src/utils/kinds.ts";
 const scratchRoot = mkdtempSync(join(tmpdir(), "entry-url-identity-"));
 let databaseSerial = 0;

@@ -19,10 +19,10 @@ import {
   type TrackWithSources,
 } from "../src/lib/db/schema.ts";
 import {
-  catchUp as commitCatchUp,
-  ingestEntry,
-  removeEntries,
-  saveMemo,
+  commitCatchUp,
+  commitIngest as ingestEntry,
+  commitMemo as saveMemo,
+  commitRemoveEntries as removeEntries,
 } from "../src/lib/db/write.ts";
 import { entryKinds } from "../src/utils/kinds.ts";
 

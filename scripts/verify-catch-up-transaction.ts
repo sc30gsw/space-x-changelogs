@@ -6,7 +6,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql/web";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { databaseSchema, entries, tracks, type AppDatabase } from "../src/lib/db/schema.ts";
-import { catchUp, ingestEntry } from "../src/lib/db/write.ts";
+import { commitCatchUp as catchUp, commitIngest as ingestEntry } from "../src/lib/db/write.ts";
 
 const scratchRoot = mkdtempSync(join(tmpdir(), "catch-up-transaction-"));
 

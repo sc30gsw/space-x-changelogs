@@ -5,6 +5,7 @@
     "scripts/e2e-serve.mjs",
     "scripts/verify-entry-url-identity.ts",
     "scripts/verify-entry-lifecycle.ts",
+    "scripts/verify-catch-up-transaction.ts",
     "src/app/router.tsx",
     "src/app/routes/**/*.tsx",
     "src/app/start.ts",
