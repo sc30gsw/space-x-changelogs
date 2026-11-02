@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "space-x-changelogs",
+  // This date enables Node.js compatibility. Do not add nodejs_compat.
+  "compatibility_date": "2026-11-02",
+  "main": "@tanstack/react-start/server-entry",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+    },
+    "traces": {
+      "enabled": true,
+    },
+  },
+  // Production Turso is in aws-ap-northeast-1. Place fetch handlers next to it.
+  "placement": {
+    "mode": "targeted",
+    "region": "aws:ap-northeast-1",
+  },
+}

@@ -109,7 +109,7 @@ Entry フォームの項目（ユーザーも Watcher も同じフォームを�
 | バリデーション / フォーム | Valibot + formisch                                                                                                                                                                                                                                                 |
 | DB                        | Turso。サーバー側は Drizzle ORM（ドライバは `@libsql/client/web`、`drizzle-kit` でマイグレーション）を Effect サービス `Database` として包み、クライアント側は TanStack DB のコレクションとして扱う（[ADR 0002](./docs/adr/0002-tanstack-db-for-client-state.md)） |
 | 日時                      | Temporal API、JST                                                                                                                                                                                                                                                  |
-| デプロイ                  | Node。`vite.config.ts` は `nitro()` をプリセットなしで呼ぶ。`pnpm start` が `.output/server/index.mjs` を起動する                                                                                                                                                  |
+| デプロイ                  | Cloudflare Workers。`pnpm deploy` が `SERVER_HOST=cloudflare-workers` でビルドして `wrangler deploy` する。`pnpm start` と e2e は Nitro の Node サーバのまま                                                                                                                                                  |
 | パッケージマネージャ      | pnpm                                                                                                                                                                                                                                                               |
 
 ## 開発
@@ -142,3 +142,18 @@ pnpm start
 ```bash
 pnpm test:e2e
 ```
+
+## Workers へのデプロイ
+
+`pnpm deploy` は Cloudflare Workers 向けにビルドしてからデプロイする。そのビルドだけ `SERVER_HOST=cloudflare-workers` になり、`vite.config.ts` は `nitro()` の代わりに `@cloudflare/vite-plugin` を使う。`pnpm dev`、`pnpm start`、`pnpm test:e2e` は Nitro の Node サーバのままなので、e2e の `file:` SQLite は変わらない。
+
+初回は `pnpm exec wrangler login` で Cloudflare にログインする。秘密値はリポジトリに置かない。次のコマンドを実行し、プロンプトに値を入れる。
+
+```bash
+pnpm exec wrangler secret put TURSO_DATABASE_URL
+pnpm exec wrangler secret put TURSO_AUTH_TOKEN
+pnpm exec wrangler secret put BASIC_AUTH_USER
+pnpm exec wrangler secret put BASIC_AUTH_PASSWORD
+```
+
+`wrangler.jsonc` の `compatibility_date` は `2026-11-02`。ログとトレースは有効。Worker は `aws:ap-northeast-1` の Turso の近くで動く。
