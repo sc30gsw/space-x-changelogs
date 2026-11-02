@@ -89,6 +89,31 @@ const main = async (): Promise<void> => {
   if (after.some((row) => row.id !== first.id && row.id !== second.id)) {
     fail("catchUp inserted a row");
   }
+  const updatedAt = "2026-11-02T02:00:00.000Z";
+  const saved = await catchUp(
+    db,
+    [
+      { id: second.id, caughtUp: true },
+      { id: first.id, caughtUp: false },
+      { id: first.id, caughtUp: true },
+    ],
+    updatedAt,
+  );
+  if (saved.map((row) => row.id).join(",") !== `${second.id},${first.id}`) {
+    fail(`return order ${saved.map((row) => row.id).join(",")}`);
+  }
+  if (!saved.every((row) => row.caughtUp && row.updatedAt === updatedAt)) {
+    fail("last mark did not win");
+  }
+  const stored = await db.select().from(entries);
+  if (stored.length !== 2) {
+    fail(`expected both rows after a successful catchUp, found ${stored.length}`);
+  }
+  for (const row of stored) {
+    if (!row.caughtUp || row.updatedAt !== updatedAt) {
+      fail(`stored row ${row.id} did not keep the last mark`);
+    }
+  }
   console.log("catchUp transaction: missing id left both rows unchanged");
 };
 

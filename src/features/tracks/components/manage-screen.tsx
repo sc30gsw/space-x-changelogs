@@ -16,8 +16,19 @@ import {
 const rejectionText = (error: unknown): string =>
   error instanceof Error && error.message.length > 0 ? error.message : "保存できませんでした";
 
+const ensureId = (slot: { current: string | null }): string => {
+  const existing = slot.current;
+  if (existing !== null) {
+    return existing;
+  }
+  const created = crypto.randomUUID();
+  slot.current = created;
+  return created;
+};
+
 function TrackCreateForm() {
-  const draftId = useRef(crypto.randomUUID());
+  const draftSlot = useRef<string | null>(null);
+  const draftId = ensureId(draftSlot);
   const [message, setMessage] = useState<string | null>(null);
   const [rejection, setRejection] = useState<string | null>(null);
   const form = useForm({
@@ -28,12 +39,12 @@ function TrackCreateForm() {
     setMessage(null);
     setRejection(null);
     try {
-      await saveTrack({ id: draftId.current, name: output.name, slug: output.slug });
+      await saveTrack({ id: draftId, name: output.name, slug: output.slug });
     } catch (error) {
       setRejection(rejectionText(error));
       return;
     }
-    draftId.current = crypto.randomUUID();
+    draftSlot.current = crypto.randomUUID();
     reset(form);
     setMessage(`${output.name} を追加しました`);
   };
@@ -87,7 +98,8 @@ function TrackCreateForm() {
 
 function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
   const { tracks, sources } = useWorkspace();
-  const sourceDraftId = useRef(crypto.randomUUID());
+  const sourceSlot = useRef<string | null>(null);
+  const sourceDraftId = ensureId(sourceSlot);
   const track = tracks.find((item) => item.id === trackId);
   const trackSources = sources
     .filter((source) => source.trackId === trackId)
@@ -124,7 +136,7 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
     setSourceRejection(null);
     try {
       await saveSource({
-        id: sourceDraftId.current,
+        id: sourceDraftId,
         trackId: track.id,
         label: output.label,
         url: output.url,
@@ -133,7 +145,7 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
       setSourceRejection(rejectionText(error));
       return;
     }
-    sourceDraftId.current = crypto.randomUUID();
+    sourceSlot.current = crypto.randomUUID();
     reset(form);
   };
 

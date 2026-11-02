@@ -273,13 +273,12 @@ export const commitCatchUp = (
   }
 
   return withWrite(db, async (tx) => {
-    for (const mark of next) {
-      await tx
-        .update(entries)
-        .set({ caughtUp: mark.caughtUp, updatedAt: now })
-        .where(eq(entries.id, mark.id));
-    }
     const ids = next.map((mark) => mark.id);
+    const caughtUp = sql<boolean>`case ${entries.id} ${sql.join(
+      next.map((mark) => sql`when ${mark.id} then ${mark.caughtUp}`),
+      sql` `,
+    )} else ${entries.caughtUp} end`;
+    await tx.update(entries).set({ caughtUp, updatedAt: now }).where(inArray(entries.id, ids));
     const found = await tx.select().from(entries).where(inArray(entries.id, ids));
     if (found.length !== ids.length) {
       throw new RecordNotFound({ message: "Could not update Caught up." });

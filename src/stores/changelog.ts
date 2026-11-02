@@ -57,6 +57,20 @@ const take = <T>(results: Map<string, T>, token: string, missing: string): T => 
   return row;
 };
 
+const recordInOrder = <T, R>(items: readonly T[], step: (item: T) => Promise<R>): Promise<R[]> =>
+  items.reduce<Promise<R[]>>(
+    (pending, item) => pending.then((saved) => step(item).then((row) => [...saved, row])),
+    Promise.resolve([]),
+  );
+
+const remember = <T>(results: Map<string, T>, metadata: unknown, row: T): T => {
+  const token = tokenOf(metadata);
+  if (token !== undefined) {
+    results.set(token, row);
+  }
+  return row;
+};
+
 const lastMarks = (marks: readonly CaughtUpMark[]): CaughtUpMark[] => {
   const byId = new Map<string, boolean>();
   for (const mark of marks) {
@@ -86,39 +100,27 @@ const trackOptions = collectionOptions("tracks", (client) =>
     queryClient: client.requireDependency<QueryClient>("queryClient"),
     getKey: (track) => track.id,
     onInsert: async ({ transaction, collection }) => {
-      const saved: Track[] = [];
-      for (const mutation of transaction.mutations) {
-        const row = await saveTrackFn({
+      const saved = await recordInOrder(transaction.mutations, (mutation) =>
+        saveTrackFn({
           data: {
             id: mutation.modified.id,
             name: mutation.modified.name,
             slug: mutation.modified.slug,
           },
-        });
-        const token = tokenOf(mutation.metadata);
-        if (token !== undefined) {
-          trackResults.set(token, row);
-        }
-        saved.push(row);
-      }
+        }).then((row) => remember(trackResults, mutation.metadata, row)),
+      );
       await collection.utils.writeUpsert(saved);
     },
     onUpdate: async ({ transaction, collection }) => {
-      const saved: Track[] = [];
-      for (const mutation of transaction.mutations) {
-        const row = await saveTrackFn({
+      const saved = await recordInOrder(transaction.mutations, (mutation) =>
+        saveTrackFn({
           data: {
             id: mutation.modified.id,
             name: mutation.modified.name,
             slug: mutation.modified.slug,
           },
-        });
-        const token = tokenOf(mutation.metadata);
-        if (token !== undefined) {
-          trackResults.set(token, row);
-        }
-        saved.push(row);
-      }
+        }).then((row) => remember(trackResults, mutation.metadata, row)),
+      );
       await collection.utils.writeUpsert(saved);
     },
   }),
@@ -132,41 +134,29 @@ const sourceOptions = collectionOptions("sources", (client) =>
     queryClient: client.requireDependency<QueryClient>("queryClient"),
     getKey: (source) => source.id,
     onInsert: async ({ transaction, collection }) => {
-      const saved: Source[] = [];
-      for (const mutation of transaction.mutations) {
-        const row = await saveSourceFn({
+      const saved = await recordInOrder(transaction.mutations, (mutation) =>
+        saveSourceFn({
           data: {
             id: mutation.modified.id,
             trackId: mutation.modified.trackId,
             label: mutation.modified.label,
             url: mutation.modified.url,
           },
-        });
-        const token = tokenOf(mutation.metadata);
-        if (token !== undefined) {
-          sourceResults.set(token, row);
-        }
-        saved.push(row);
-      }
+        }).then((row) => remember(sourceResults, mutation.metadata, row)),
+      );
       await collection.utils.writeUpsert(saved);
     },
     onUpdate: async ({ transaction, collection }) => {
-      const saved: Source[] = [];
-      for (const mutation of transaction.mutations) {
-        const row = await saveSourceFn({
+      const saved = await recordInOrder(transaction.mutations, (mutation) =>
+        saveSourceFn({
           data: {
             id: mutation.modified.id,
             trackId: mutation.modified.trackId,
             label: mutation.modified.label,
             url: mutation.modified.url,
           },
-        });
-        const token = tokenOf(mutation.metadata);
-        if (token !== undefined) {
-          sourceResults.set(token, row);
-        }
-        saved.push(row);
-      }
+        }).then((row) => remember(sourceResults, mutation.metadata, row)),
+      );
       await collection.utils.writeUpsert(saved);
     },
   }),
@@ -202,8 +192,9 @@ const entryOptions = collectionOptions("entries", (client) =>
       const keys = transaction.mutations.map((mutation) => String(mutation.key));
       await removeEntriesFn({ data: keys });
       await collection.utils.writeDelete(keys);
+      const removedEntryIds = new Set(keys);
       const memoIds = [...ready(memoCollection).values()]
-        .filter((memo) => keys.includes(memo.entryId))
+        .filter((memo) => removedEntryIds.has(memo.entryId))
         .map((memo) => memo.id);
       if (memoIds.length > 0) {
         await ready(memoCollection).utils.writeDelete(memoIds);
@@ -220,39 +211,27 @@ const memoOptions = collectionOptions("memos", (client) =>
     queryClient: client.requireDependency<QueryClient>("queryClient"),
     getKey: (memo) => memo.id,
     onInsert: async ({ transaction, collection }) => {
-      const saved: Memo[] = [];
-      for (const mutation of transaction.mutations) {
-        const row = await saveMemoFn({
+      const saved = await recordInOrder(transaction.mutations, (mutation) =>
+        saveMemoFn({
           data: {
             id: mutation.modified.id,
             entryId: mutation.modified.entryId,
             body: mutation.modified.body,
           },
-        });
-        const token = tokenOf(mutation.metadata);
-        if (token !== undefined) {
-          memoResults.set(token, row);
-        }
-        saved.push(row);
-      }
+        }).then((row) => remember(memoResults, mutation.metadata, row)),
+      );
       await collection.utils.writeUpsert(saved);
     },
     onUpdate: async ({ transaction, collection }) => {
-      const saved: Memo[] = [];
-      for (const mutation of transaction.mutations) {
-        const row = await saveMemoFn({
+      const saved = await recordInOrder(transaction.mutations, (mutation) =>
+        saveMemoFn({
           data: {
             id: mutation.modified.id,
             entryId: mutation.modified.entryId,
             body: mutation.modified.body,
           },
-        });
-        const token = tokenOf(mutation.metadata);
-        if (token !== undefined) {
-          memoResults.set(token, row);
-        }
-        saved.push(row);
-      }
+        }).then((row) => remember(memoResults, mutation.metadata, row)),
+      );
       await collection.utils.writeUpsert(saved);
     },
     onDelete: async ({ transaction, collection }) => {
@@ -321,11 +300,12 @@ export async function catchUp(marks: readonly CaughtUpMark[]): Promise<Entry[]> 
   }
 
   const token = crypto.randomUUID();
+  const markById = new Map(next.map((mark) => [mark.id, mark.caughtUp]));
   const tx = collection.update(ids, { metadata: { token } }, (drafts) => {
     for (const draft of drafts) {
-      const mark = next.find((item) => item.id === draft.id);
-      if (mark !== undefined) {
-        draft.caughtUp = mark.caughtUp;
+      const caughtUp = markById.get(draft.id);
+      if (caughtUp !== undefined) {
+        draft.caughtUp = caughtUp;
       }
     }
   });
@@ -430,8 +410,9 @@ export async function removeEntries(ids: readonly string[]): Promise<void> {
     if (present.length > 0) {
       await collection.utils.writeDelete(present);
     }
+    const removedEntryIds = new Set(ids);
     const memoIds = [...ready(memoCollection).values()]
-      .filter((memo) => ids.includes(memo.entryId))
+      .filter((memo) => removedEntryIds.has(memo.entryId))
       .map((memo) => memo.id);
     if (memoIds.length > 0) {
       await ready(memoCollection).utils.writeDelete(memoIds);
