@@ -1,7 +1,9 @@
 import { Button, Divider, Group, Stack, Text, TextInput, Title } from "@mantine/core";
 import { Field, Form, reset, useForm } from "@formisch/react";
 import type { SubmitHandler } from "@formisch/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { saveSource, saveTrack } from "../../../stores/changelog";
+import { useWorkspace } from "../../../stores/workspace";
 import {
   sourceFormSchema,
   trackFormSchema,
@@ -10,23 +12,39 @@ import {
   type Track,
   type TrackFormValues,
 } from "../../../types/schemas";
-import { useWorkspace } from "../../../stores/workspace";
+
+const rejectionText = (error: unknown): string =>
+  error instanceof Error && error.message.length > 0 ? error.message : "保存できませんでした";
+
+const ensureId = (slot: { current: string | null }): string => {
+  const existing = slot.current;
+  if (existing !== null) {
+    return existing;
+  }
+  const created = crypto.randomUUID();
+  slot.current = created;
+  return created;
+};
 
 function TrackCreateForm() {
-  const { tracksCollection } = useWorkspace();
+  const draftSlot = useRef<string | null>(null);
+  const draftId = ensureId(draftSlot);
   const [message, setMessage] = useState<string | null>(null);
+  const [rejection, setRejection] = useState<string | null>(null);
   const form = useForm({
     schema: trackFormSchema,
     initialInput: { name: "", slug: "" },
   });
   const handleSubmit: SubmitHandler<typeof trackFormSchema> = async (output: TrackFormValues) => {
     setMessage(null);
-    const transaction = tracksCollection.insert({
-      id: crypto.randomUUID(),
-      name: output.name,
-      slug: output.slug,
-    });
-    await transaction.when("settled");
+    setRejection(null);
+    try {
+      await saveTrack({ id: draftId, name: output.name, slug: output.slug });
+    } catch (error) {
+      setRejection(rejectionText(error));
+      return;
+    }
+    draftSlot.current = crypto.randomUUID();
     reset(form);
     setMessage(`${output.name} を追加しました`);
   };
@@ -66,6 +84,11 @@ function TrackCreateForm() {
               {error}
             </Text>
           ))}
+          {rejection !== null ? (
+            <Text role="alert" c="red">
+              {rejection}
+            </Text>
+          ) : null}
           {message !== null ? <Text role="status">{message}</Text> : null}
         </Stack>
       </Form>
@@ -74,12 +97,16 @@ function TrackCreateForm() {
 }
 
 function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
-  const { tracks, sources, tracksCollection, sourcesCollection } = useWorkspace();
+  const { tracks, sources } = useWorkspace();
+  const sourceSlot = useRef<string | null>(null);
+  const sourceDraftId = ensureId(sourceSlot);
   const track = tracks.find((item) => item.id === trackId);
   const trackSources = sources
     .filter((source) => source.trackId === trackId)
     .toSorted((left, right) => left.position - right.position || left.id.localeCompare(right.id));
   const [message, setMessage] = useState<string | null>(null);
+  const [rejection, setRejection] = useState<string | null>(null);
+  const [sourceRejection, setSourceRejection] = useState<string | null>(null);
   const trackForm = useForm({
     schema: trackFormSchema,
     initialInput: { name: track?.name ?? "", slug: track?.slug ?? "" },
@@ -93,26 +120,32 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
     return null;
   }
 
-  const saveTrack: SubmitHandler<typeof trackFormSchema> = async (output: TrackFormValues) => {
+  const saveThisTrack: SubmitHandler<typeof trackFormSchema> = async (output: TrackFormValues) => {
     setMessage(null);
-    const transaction = tracksCollection.update(track.id, (draft) => {
-      draft.name = output.name;
-      draft.slug = output.slug;
-    });
-    await transaction.when("settled");
+    setRejection(null);
+    try {
+      await saveTrack({ id: track.id, name: output.name, slug: output.slug });
+    } catch (error) {
+      setRejection(rejectionText(error));
+      return;
+    }
     setMessage("保存しました");
   };
 
   const addSource: SubmitHandler<typeof sourceFormSchema> = async (output: SourceFormValues) => {
-    const position = trackSources.reduce((max, source) => Math.max(max, source.position), -1) + 1;
-    const transaction = sourcesCollection.insert({
-      id: crypto.randomUUID(),
-      trackId: track.id,
-      label: output.label,
-      url: output.url,
-      position,
-    });
-    await transaction.when("settled");
+    setSourceRejection(null);
+    try {
+      await saveSource({
+        id: sourceDraftId,
+        trackId: track.id,
+        label: output.label,
+        url: output.url,
+      });
+    } catch (error) {
+      setSourceRejection(rejectionText(error));
+      return;
+    }
+    sourceSlot.current = crypto.randomUUID();
     reset(form);
   };
 
@@ -121,7 +154,7 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
       <Title order={2} size="h3">
         {track.name}
       </Title>
-      <Form of={trackForm} onSubmit={saveTrack}>
+      <Form of={trackForm} onSubmit={saveThisTrack}>
         <Stack gap="sm" mt="sm">
           <Field of={trackForm} path={["name"]}>
             {(field) => (
@@ -151,6 +184,11 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
               {error}
             </Text>
           ))}
+          {rejection !== null ? (
+            <Text role="alert" c="red">
+              {rejection}
+            </Text>
+          ) : null}
           {message !== null ? <Text role="status">{message}</Text> : null}
         </Stack>
       </Form>
@@ -187,6 +225,11 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
                 {error}
               </Text>
             ))}
+            {sourceRejection !== null ? (
+              <Text role="alert" c="red">
+                {sourceRejection}
+              </Text>
+            ) : null}
           </Stack>
         </Form>
       </Stack>
@@ -195,8 +238,9 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
 }
 
 function SourceEditor({ sourceId }: { readonly sourceId: Source["id"] }) {
-  const { sources, sourcesCollection } = useWorkspace();
+  const { sources } = useWorkspace();
   const source = sources.find((item) => item.id === sourceId);
+  const [rejection, setRejection] = useState<string | null>(null);
   const form = useForm({
     schema: sourceFormSchema,
     initialInput: { label: source?.label ?? "", url: source?.url ?? "" },
@@ -206,11 +250,17 @@ function SourceEditor({ sourceId }: { readonly sourceId: Source["id"] }) {
   }
 
   const save: SubmitHandler<typeof sourceFormSchema> = async (output: SourceFormValues) => {
-    const transaction = sourcesCollection.update(source.id, (draft) => {
-      draft.label = output.label;
-      draft.url = output.url;
-    });
-    await transaction.when("settled");
+    setRejection(null);
+    try {
+      await saveSource({
+        id: source.id,
+        trackId: source.trackId,
+        label: output.label,
+        url: output.url,
+      });
+    } catch (error) {
+      setRejection(rejectionText(error));
+    }
   };
 
   return (
@@ -245,6 +295,11 @@ function SourceEditor({ sourceId }: { readonly sourceId: Source["id"] }) {
           {error}
         </Text>
       ))}
+      {rejection !== null ? (
+        <Text role="alert" c="red">
+          {rejection}
+        </Text>
+      ) : null}
     </Form>
   );
 }

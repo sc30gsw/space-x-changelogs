@@ -18,7 +18,12 @@ import {
   type SourceWithTrack,
   type TrackWithSources,
 } from "../src/lib/db/schema.ts";
-import { deleteEntries, insertMemo, setCaughtUp, submitEntry } from "../src/lib/submit-entry.ts";
+import {
+  commitCatchUp,
+  commitIngest as ingestEntry,
+  commitMemo as saveMemo,
+  commitRemoveEntries as removeEntries,
+} from "../src/lib/db/write.ts";
 import { entryKinds } from "../src/utils/kinds.ts";
 
 const scratchRoot = mkdtempSync(join(tmpdir(), "entry-lifecycle-"));
@@ -264,7 +269,7 @@ const submit = async (
     body: "本文",
     now: input.now ?? nextNow(),
   };
-  const returned = await submitEntry(db, payload);
+  const returned = await ingestEntry(db, payload);
   applySubmit(recorded, payload, returned);
   matches(await snapshot(db), recorded);
   return returned;
@@ -314,7 +319,7 @@ const catchUp = async (
   now: string,
 ): Promise<void> => {
   const before = defined(await readEntry(db, id), `Entry ${id} was missing before Caught up`);
-  await setCaughtUp(db, { ids: [id], caughtUp, now });
+  await commitCatchUp(db, [{ id, caughtUp }], now);
   const after = defined(await readEntry(db, id), `Entry ${id} was missing after Caught up`);
   assertCaughtUpWrite(before, after, caughtUp, now);
   const target = defined(
@@ -334,7 +339,7 @@ const addMemo = async (
   body: string,
   now: string,
 ): Promise<void> => {
-  await insertMemo(db, { id, entryId, body, now });
+  await saveMemo(db, { id, entryId, body, now });
   const target = defined(
     recorded.find((row) => row.id === entryId),
     `model lost Entry ${entryId}`,
@@ -346,7 +351,7 @@ const addMemo = async (
 const assertDelete = async (db: AppDatabase, ids: readonly string[]): Promise<void> => {
   const beforeEntries = await db.select().from(entries);
   const beforeMemos = await db.select().from(memos);
-  await deleteEntries(db, ids);
+  await removeEntries(db, ids);
   const afterEntries = await db.select().from(entries);
   const afterMemos = await db.select().from(memos);
   for (const id of ids) {
@@ -498,7 +503,7 @@ const runCascade = async (): Promise<void> => {
   );
 
   const raced = await Promise.all([
-    submitEntry(db, {
+    ingestEntry(db, {
       trackId: "track-cursor",
       kind: "X Post",
       title: "再同時 A",
@@ -508,7 +513,7 @@ const runCascade = async (): Promise<void> => {
       body: "A",
       now: "2026-11-02T00:00:07.000Z",
     }),
-    submitEntry(db, {
+    ingestEntry(db, {
       trackId: "track-cursor",
       kind: "Pull Request",
       title: "再同時 B",
@@ -556,7 +561,7 @@ const runCascade = async (): Promise<void> => {
   await assertDelete(db, [target.id]);
   const remaining = removeFromModel(recorded, [target.id]);
   matches(await snapshot(db), remaining);
-  await deleteEntries(db, []);
+  await removeEntries(db, []);
   matches(await snapshot(db), remaining);
 };
 
@@ -619,7 +624,7 @@ const runGenerated = async (): Promise<void> => {
 
 const assertCaughtUpRollsBack = async (): Promise<void> => {
   const db = await openDb();
-  const saved = await submitEntry(db, {
+  const saved = await ingestEntry(db, {
     id: "entry-a",
     trackId: "track-cursor",
     kind: "Release",
@@ -632,13 +637,20 @@ const assertCaughtUpRollsBack = async (): Promise<void> => {
   });
   let failed = false;
   try {
-    await setCaughtUp(db, {
-      ids: [saved.id, "entry-missing"],
-      caughtUp: true,
-      now: "2026-11-02T01:00:00.000Z",
-    });
+    await commitCatchUp(
+      db,
+      [
+        { id: saved.id, caughtUp: true },
+        { id: "entry-missing", caughtUp: true },
+      ],
+      "2026-11-02T01:00:00.000Z",
+    );
   } catch (error) {
-    failed = error instanceof Error && error.message === "Could not update Caught up.";
+    failed =
+      typeof error === "object" &&
+      error !== null &&
+      "_tag" in error &&
+      error._tag === "RecordNotFound";
   }
   if (!failed) {
     fail("a missing Caught up id was accepted");

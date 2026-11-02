@@ -6,7 +6,11 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql/web";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { databaseSchema, entries, memos, tracks, type AppDatabase } from "../src/lib/db/schema.ts";
-import { insertMemo, setCaughtUp, submitEntry } from "../src/lib/submit-entry.ts";
+import {
+  commitCatchUp,
+  commitIngest as ingestEntry,
+  commitMemo as saveMemo,
+} from "../src/lib/db/write.ts";
 import { entryKinds } from "../src/utils/kinds.ts";
 const scratchRoot = mkdtempSync(join(tmpdir(), "entry-url-identity-"));
 let databaseSerial = 0;
@@ -48,9 +52,6 @@ const mulberry32 = (seed: number) => () => {
   return ((state ^ (state >>> 14)) >>> 0) / 4294967296;
 };
 
-// A file database with several connections is the same shape as local Turso:
-// two Ingest calls can pass the URL lookup before either commits. `:memory:`
-// refuses that; it keeps one connection, so the race never starts.
 const openDb = async (): Promise<AppDatabase> => {
   databaseSerial += 1;
   const client = createClient({
@@ -153,7 +154,7 @@ const submit = async (
   recorded: Recorded[],
   input: { id?: string; url: string; title: string; trackId?: string },
 ) => {
-  const returned = await submitEntry(db, {
+  const returned = await ingestEntry(db, {
     id: input.id,
     trackId: input.trackId ?? "track-cursor",
     kind: entryKinds[Math.abs(input.title.length) % entryKinds.length] ?? entryKinds[0],
@@ -177,9 +178,9 @@ const runScripted = async (): Promise<void> => {
   if (first === undefined) {
     fail("missing first entry");
   }
-  await setCaughtUp(db, { ids: [first.id], caughtUp: true, now: "2026-11-01T01:00:00.000Z" });
+  await commitCatchUp(db, [{ id: first.id, caughtUp: true }], "2026-11-01T01:00:00.000Z");
   first.caughtUp = true;
-  const memo = await insertMemo(db, {
+  const memo = await saveMemo(db, {
     id: "memo-1",
     entryId: first.id,
     body: "<p>学び</p>",
@@ -195,7 +196,7 @@ const runScripted = async (): Promise<void> => {
 
   const fresh = await openDb();
   const concurrent = await Promise.all([
-    submitEntry(fresh, {
+    ingestEntry(fresh, {
       trackId: "track-cursor",
       kind: "X Post",
       title: "同時 A",
@@ -205,7 +206,7 @@ const runScripted = async (): Promise<void> => {
       body: "",
       now: "2026-11-01T00:00:00.000Z",
     }),
-    submitEntry(fresh, {
+    ingestEntry(fresh, {
       trackId: "track-grok-bot",
       kind: "Release",
       title: "同時 B",
@@ -229,19 +230,19 @@ const runScripted = async (): Promise<void> => {
   if (raced.length !== 1) {
     fail(`concurrent Ingest left ${raced.length} rows`);
   }
-  await setCaughtUp(fresh, {
-    ids: [raced[0]?.id ?? ""],
-    caughtUp: true,
-    now: "2026-11-01T02:00:00.000Z",
-  });
-  await insertMemo(fresh, {
+  await commitCatchUp(
+    fresh,
+    [{ id: raced[0]?.id ?? "", caughtUp: true }],
+    "2026-11-01T02:00:00.000Z",
+  );
+  await saveMemo(fresh, {
     id: "memo-race",
     entryId: raced[0]?.id ?? "",
     body: "<p>残る</p>",
     now: "2026-11-01T02:00:00.000Z",
   });
   await Promise.all([
-    submitEntry(fresh, {
+    ingestEntry(fresh, {
       trackId: "track-cursor",
       kind: "Release",
       title: "再同時 A",
@@ -251,7 +252,7 @@ const runScripted = async (): Promise<void> => {
       body: "A",
       now: "2026-11-01T03:00:00.000Z",
     }),
-    submitEntry(fresh, {
+    ingestEntry(fresh, {
       trackId: "track-cursor",
       kind: "Pull Request",
       title: "再同時 B",
@@ -304,15 +305,15 @@ const runGenerated = async (): Promise<void> => {
       const target = pick(recorded);
       if (roll < 0.8) {
         const caughtUp = random() < 0.5;
-        await setCaughtUp(db, {
-          ids: [target.id],
-          caughtUp,
-          now: `2026-11-01T00:00:${String(step).padStart(2, "0")}.000Z`,
-        });
+        await commitCatchUp(
+          db,
+          [{ id: target.id, caughtUp }],
+          `2026-11-01T00:00:${String(step).padStart(2, "0")}.000Z`,
+        );
         target.caughtUp = caughtUp;
       } else {
         const id = `memo-${trial}-${step}`;
-        await insertMemo(db, {
+        await saveMemo(db, {
           id,
           entryId: target.id,
           body: `<p>${id}</p>`,
