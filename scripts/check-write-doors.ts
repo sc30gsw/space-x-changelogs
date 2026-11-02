@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 const bannedNames = ["pickTrackChanges", "setCaughtUpFn", "entrySchema", "submitEntryFn"] as const;
 
 const allowedClientFile = "lib/db/database.ts";
-const parallelKey = /^\s*parallel\s*:/u;
+const parallelKey = /^\s*["']?parallel["']?\s*:/u;
 
 export type WriteDoorReport = {
   readonly failures: readonly string[];
