@@ -70,12 +70,66 @@ const moduleLabel = (specifier: string): string | undefined => {
   return undefined;
 };
 
+const withoutComments = (source: string): string => {
+  let out = "";
+  let index = 0;
+  let quote: string | null = null;
+  while (index < source.length) {
+    const char = source[index] ?? "";
+    const next = source[index + 1] ?? "";
+    if (quote !== null) {
+      out += char;
+      if (char === "\\" && quote !== "`") {
+        out += next;
+        index += 2;
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+      }
+      index += 1;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char;
+      out += char;
+      index += 1;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      index += 2;
+      while (index < source.length && source[index] !== "\n") {
+        index += 1;
+      }
+      out += " ";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      index += 2;
+      while (index < source.length && !(source[index] === "*" && source[index + 1] === "/")) {
+        index += 1;
+      }
+      index += 2;
+      out += " ";
+      continue;
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
+};
+
+const quote = "[`\"']";
+
 const specifiersIn = (source: string): string[] => {
   const found: string[] = [];
   const patterns = [
-    /\b(?:import|export)\s+(?:type\s+)?[^"'`;]*?\bfrom\s*["']([^"']+)["']/g,
-    /\bimport\s*["']([^"']+)["']/g,
-    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+    new RegExp(
+      `\\b(?:import|export)\\s*(?:type\\s*)?[^"'\`;]*?\\bfrom\\s*${quote}([^"'\`]+)${quote}`,
+      "g",
+    ),
+    new RegExp(`\\bimport\\s*${quote}([^"'\`]+)${quote}`, "g"),
+    new RegExp(`\\bimport\\s*\\(\\s*${quote}([^"'\`]+)${quote}`, "g"),
   ];
   for (const pattern of patterns) {
     for (const match of source.matchAll(pattern)) {
@@ -90,7 +144,10 @@ const specifiersIn = (source: string): string[] => {
 
 const importedCollectionNames = (source: string): string[] => {
   const names: string[] = [];
-  const groups = /\b(?:import|export)\s+(?:type\s+)?\{([^}]+)\}\s*from\s*["']/g;
+  const groups = new RegExp(
+    `\\b(?:import|export)\\s*(?:type\\s*)?\\{([^}]+)\\}\\s*from\\s*${quote}`,
+    "g",
+  );
   for (const match of source.matchAll(groups)) {
     for (const piece of (match[1] ?? "").split(",")) {
       const trimmed = piece.trim().replace(/^type\s+/, "");
@@ -109,11 +166,18 @@ const importedCollectionNames = (source: string): string[] => {
   return names;
 };
 
-const starImportsChangelog = (source: string): boolean => {
+const importsChangelogModule = (source: string): boolean => {
   const patterns = [
-    /\bimport\s*\*\s*as\s+[A-Za-z_$][\w$]*\s*from\s*["']([^"']+)["']/g,
-    /\bexport\s*\*\s*from\s*["']([^"']+)["']/g,
-    /\bexport\s*\*\s*as\s+[A-Za-z_$][\w$]*\s*from\s*["']([^"']+)["']/g,
+    new RegExp(
+      `\\bimport\\s*\\*\\s*as\\s+[A-Za-z_$][\\w$]*\\s*from\\s*${quote}([^"'\`]+)${quote}`,
+      "g",
+    ),
+    new RegExp(`\\bexport\\s*\\*\\s*from\\s*${quote}([^"'\`]+)${quote}`, "g"),
+    new RegExp(
+      `\\bexport\\s*\\*\\s*as\\s+[A-Za-z_$][\\w$]*\\s*from\\s*${quote}([^"'\`]+)${quote}`,
+      "g",
+    ),
+    new RegExp(`\\bimport\\s*\\(\\s*${quote}([^"'\`]+)${quote}`, "g"),
   ];
   for (const pattern of patterns) {
     for (const match of source.matchAll(pattern)) {
@@ -172,8 +236,9 @@ const innerHtml: string[] = [];
 
 for (const file of files) {
   const text = readFileSync(join(sourceRoot, file), "utf8");
+  const scanned = withoutComments(text);
   if (guardedFile(file)) {
-    for (const specifier of specifiersIn(text)) {
+    for (const specifier of specifiersIn(scanned)) {
       const label = moduleLabel(specifier);
       if (label !== undefined) {
         failures.push(`src/${file} imports ${label}`);
@@ -181,10 +246,10 @@ for (const file of files) {
     }
   }
   if (/\.(?:ts|tsx)$/.test(file) && !shellFiles.has(file)) {
-    for (const name of importedCollectionNames(text)) {
+    for (const name of importedCollectionNames(scanned)) {
       failures.push(`src/${file} imports ${name}`);
     }
-    if (starImportsChangelog(text)) {
+    if (importsChangelogModule(scanned)) {
       failures.push(`src/${file} imports changelogCollections`);
     }
   }
@@ -208,7 +273,7 @@ const changelog = join(sourceRoot, "stores/changelog.ts");
 if (!existsSync(changelog)) {
   failures.push("missing src/stores/changelog.ts");
 } else {
-  const source = readFileSync(changelog, "utf8");
+  const source = withoutComments(readFileSync(changelog, "utf8"));
   if (/\bexport\s*\*/.test(source)) {
     failures.push("src/stores/changelog.ts exports *");
   }
