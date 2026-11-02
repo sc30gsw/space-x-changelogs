@@ -53,11 +53,20 @@ const filesUnder = (directory: string): string[] => {
 
 const specifierParts = (specifier: string): string[] => {
   const [pathOnly = specifier] = specifier.split("?");
-  return pathOnly
+  const raw = pathOnly
     .replaceAll("\\", "/")
     .replace(/\.(?:[cm])?(?:tsx|ts|jsx|js)$/, "")
     .split("/")
-    .filter((part) => part !== "" && part !== "." && part !== "..");
+    .filter((part) => part !== "" && part !== ".");
+  const resolved: string[] = [];
+  for (const part of raw) {
+    if (part === "..") {
+      resolved.pop();
+      continue;
+    }
+    resolved.push(part);
+  }
+  return resolved;
 };
 
 const tailMatches = (specifier: string, tail: readonly string[]): boolean => {
