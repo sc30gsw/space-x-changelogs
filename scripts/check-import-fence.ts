@@ -12,18 +12,23 @@ const allowedExports = new Set([
   "saveMemo",
   "removeEntries",
   "removeMemos",
-  "DataProvider",
-  "WorkspaceProvider",
-  "useWorkspace",
   "changelogCollections",
   "createChangelogClient",
 ]);
+
+const collectionNames = new Set(["changelogCollections", "createChangelogClient"]);
+
+const shellFiles = new Set(["app/provider.tsx", "stores/workspace.tsx"]);
+
+const guardedTrees = ["features/", "app/", "components/"];
 
 const forbiddenModules = [
   { tail: ["lib", "db", "schema"], label: "src/lib/db/schema.ts" },
   { tail: ["lib", "db", "write"], label: "src/lib/db/write.ts" },
   { tail: ["api", "changelog"], label: "src/api/changelog.ts" },
 ] as const;
+
+const changelogTail = ["stores", "changelog"];
 
 const filesUnder = (directory: string): string[] => {
   const found: string[] = [];
@@ -38,20 +43,27 @@ const filesUnder = (directory: string): string[] => {
   return found;
 };
 
-const moduleLabel = (specifier: string): string | undefined => {
+const specifierParts = (specifier: string): string[] => {
   const [pathOnly = specifier] = specifier.split("?");
-  const parts = pathOnly
+  return pathOnly
     .replaceAll("\\", "/")
     .replace(/\.(?:tsx|ts|jsx|js)$/, "")
     .split("/")
     .filter((part) => part !== "" && part !== "." && part !== "..");
+};
+
+const tailMatches = (specifier: string, tail: readonly string[]): boolean => {
+  const parts = specifierParts(specifier);
+  if (parts.length < tail.length) {
+    return false;
+  }
+  const start = parts.length - tail.length;
+  return tail.every((segment, index) => parts[start + index] === segment);
+};
+
+const moduleLabel = (specifier: string): string | undefined => {
   for (const item of forbiddenModules) {
-    if (parts.length < item.tail.length) {
-      continue;
-    }
-    const start = parts.length - item.tail.length;
-    const matched = item.tail.every((segment, index) => parts[start + index] === segment);
-    if (matched) {
+    if (tailMatches(specifier, item.tail)) {
       return item.label;
     }
   }
@@ -76,6 +88,44 @@ const specifiersIn = (source: string): string[] => {
   return found;
 };
 
+const importedCollectionNames = (source: string): string[] => {
+  const names: string[] = [];
+  const groups = /\b(?:import|export)\s+(?:type\s+)?\{([^}]+)\}\s*from\s*["']/g;
+  for (const match of source.matchAll(groups)) {
+    for (const piece of (match[1] ?? "").split(",")) {
+      const trimmed = piece.trim().replace(/^type\s+/, "");
+      if (trimmed.length === 0) {
+        continue;
+      }
+      const parts = trimmed.split(/\s+as\s+/);
+      for (const name of parts) {
+        const cleaned = name.trim();
+        if (collectionNames.has(cleaned)) {
+          names.push(cleaned);
+        }
+      }
+    }
+  }
+  return names;
+};
+
+const starImportsChangelog = (source: string): boolean => {
+  const patterns = [
+    /\bimport\s*\*\s*as\s+[A-Za-z_$][\w$]*\s*from\s*["']([^"']+)["']/g,
+    /\bexport\s*\*\s*from\s*["']([^"']+)["']/g,
+    /\bexport\s*\*\s*as\s+[A-Za-z_$][\w$]*\s*from\s*["']([^"']+)["']/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      const specifier = match[1];
+      if (specifier !== undefined && tailMatches(specifier, changelogTail)) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 const exportedNames = (source: string): string[] => {
   const names = new Set<string>();
   const declarations =
@@ -90,7 +140,7 @@ const exportedNames = (source: string): string[] => {
   for (const match of source.matchAll(groups)) {
     for (const piece of (match[1] ?? "").split(",")) {
       const trimmed = piece.trim().replace(/^type\s+/, "");
-      if (trimmed.length === 0) {
+      if (trimmed.length === 0 || trimmed.includes("from ")) {
         continue;
       }
       const parts = trimmed.split(/\s+as\s+/);
@@ -108,6 +158,9 @@ const exportedNames = (source: string): string[] => {
 
 const occurrences = (line: string, needle: string): number => line.split(needle).length - 1;
 
+const guardedFile = (file: string): boolean =>
+  /\.(?:ts|tsx)$/.test(file) && guardedTrees.some((tree) => file.startsWith(tree));
+
 if (!existsSync(sourceRoot)) {
   console.error(`missing ${sourceRoot}`);
   process.exit(1);
@@ -119,12 +172,20 @@ const innerHtml: string[] = [];
 
 for (const file of files) {
   const text = readFileSync(join(sourceRoot, file), "utf8");
-  if (file.startsWith("features/") && /\.(?:ts|tsx)$/.test(file)) {
+  if (guardedFile(file)) {
     for (const specifier of specifiersIn(text)) {
       const label = moduleLabel(specifier);
       if (label !== undefined) {
         failures.push(`src/${file} imports ${label}`);
       }
+    }
+  }
+  if (/\.(?:ts|tsx)$/.test(file) && !shellFiles.has(file)) {
+    for (const name of importedCollectionNames(text)) {
+      failures.push(`src/${file} imports ${name}`);
+    }
+    if (starImportsChangelog(text)) {
+      failures.push(`src/${file} imports changelogCollections`);
     }
   }
   for (const [index, line] of text.split("\n").entries()) {
@@ -144,8 +205,14 @@ if (innerHtml.length > 1) {
 }
 
 const changelog = join(sourceRoot, "stores/changelog.ts");
-if (existsSync(changelog)) {
-  for (const name of exportedNames(readFileSync(changelog, "utf8"))) {
+if (!existsSync(changelog)) {
+  failures.push("missing src/stores/changelog.ts");
+} else {
+  const source = readFileSync(changelog, "utf8");
+  if (/\bexport\s*\*/.test(source)) {
+    failures.push("src/stores/changelog.ts exports *");
+  }
+  for (const name of exportedNames(source)) {
     if (!allowedExports.has(name)) {
       failures.push(`src/stores/changelog.ts exports ${name}`);
     }
