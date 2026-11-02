@@ -13,7 +13,8 @@ import type { EntryFormValues } from "../../../types/schemas";
 import { formatJst, instantFromJstLocal, jstLocalFromInstant } from "../../../utils/time";
 import { EntryForm } from "./entry-form";
 import { MarkdownView } from "../../../components/markdown-view";
-import { MemoEditor, memoPlainText, sanitizeMemo } from "../../memos/components/memo-editor";
+import { sanitizeMemo } from "../../../lib/memo-html";
+import { MemoEditor, memoPlainText } from "../../memos/components/memo-editor";
 
 export function EntryDetail({ entryId }: { readonly entryId: string }) {
   const { entries, memos, tracks, isLoading } = useWorkspace();
