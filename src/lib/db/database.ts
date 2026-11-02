@@ -1,9 +1,18 @@
-import { createClient as createNodeClient } from "@libsql/client";
+import type {
+  Client,
+  InArgs,
+  InStatement,
+  ResultSet,
+  Row,
+  Transaction,
+  TransactionMode,
+} from "@libsql/client";
 import { createClient } from "@libsql/client/web";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { drizzle } from "drizzle-orm/libsql/web";
 import { Context, Effect, Layer, Schema } from "effect";
+import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
 import { seedTracks } from "./seed-data";
 import { databaseSchema, sources, tracks, type AppDatabase } from "./schema";
 
@@ -112,11 +121,274 @@ const clientChoice = (url: string, authToken: string | undefined): ClientChoice 
   return { kind: "remote", authToken };
 };
 
-const openClient = (url: string, authToken: string | undefined) => {
+const sqlitePath = (url: string): string => {
+  if (url === ":memory:" || url === "file::memory:") {
+    return ":memory:";
+  }
+  return decodeURIComponent(new URL(url).pathname);
+};
+
+const sqlValue = (value: unknown): SQLInputValue => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+  if (typeof value === "number" || typeof value === "string" || typeof value === "bigint") {
+    return value;
+  }
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  throw new DatabaseError({ message: "Unsupported SQL value.", cause: value });
+};
+
+const bind = (
+  args: InArgs | undefined,
+): SQLInputValue[] | Record<string, SQLInputValue> | undefined => {
+  if (args === undefined) {
+    return undefined;
+  }
+  if (Array.isArray(args)) {
+    return args.map((value) => sqlValue(value));
+  }
+  const named: Record<string, SQLInputValue> = {};
+  for (const [key, value] of Object.entries(args)) {
+    named[key] = sqlValue(value);
+  }
+  return named;
+};
+
+const callStatement = <A>(statement: StatementSync, args: InArgs | undefined, rows: boolean): A => {
+  const bound = bind(args);
+  if (bound === undefined) {
+    return (rows ? statement.all() : statement.run()) as A;
+  }
+  if (Array.isArray(bound)) {
+    return (rows ? statement.all(...bound) : statement.run(...bound)) as A;
+  }
+  return (rows ? statement.all(bound) : statement.run(bound)) as A;
+};
+
+const rowFrom = (names: readonly string[], values: readonly unknown[]): Row => {
+  const row = Object.create(null) as Row;
+  Object.defineProperty(row, "length", { value: values.length });
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    Object.defineProperty(row, index, { value });
+    const name = names[index];
+    if (name !== undefined && !Object.hasOwn(row, name)) {
+      Object.defineProperty(row, name, { value, enumerable: true });
+    }
+  }
+  return row;
+};
+
+const resultSet = (
+  columns: string[],
+  columnTypes: string[],
+  rows: Row[],
+  rowsAffected: number,
+  lastInsertRowid: bigint | undefined,
+): ResultSet => ({
+  columns,
+  columnTypes,
+  rows,
+  rowsAffected,
+  lastInsertRowid,
+  toJSON() {
+    return { columns, columnTypes, rows, rowsAffected, lastInsertRowid };
+  },
+});
+
+const executeOn = (db: DatabaseSync, stmt: InStatement, args?: InArgs): ResultSet => {
+  const sqlText = typeof stmt === "string" ? stmt : stmt.sql;
+  const values = typeof stmt === "string" ? args : stmt.args;
+  const statement = db.prepare(sqlText);
+  const columns = statement.columns();
+  if (columns.length === 0) {
+    const info = callStatement<{ changes: number | bigint; lastInsertRowid: number | bigint }>(
+      statement,
+      values,
+      false,
+    );
+    const rowid = info.lastInsertRowid;
+    return resultSet(
+      [],
+      [],
+      [],
+      Number(info.changes),
+      typeof rowid === "bigint" ? rowid : BigInt(rowid),
+    );
+  }
+  const objects = callStatement<Record<string, unknown>[]>(statement, values, true);
+  const names = columns.map((column) => column.name);
+  const rows = objects.map((row) =>
+    rowFrom(
+      names,
+      names.map((name) => row[name] ?? null),
+    ),
+  );
+  return resultSet(
+    names,
+    columns.map((column) => column.type ?? ""),
+    rows,
+    0,
+    undefined,
+  );
+};
+
+const beginSql = (mode?: TransactionMode): string => {
+  switch (mode) {
+    case "write":
+      return "BEGIN IMMEDIATE";
+    case "read":
+    case "deferred":
+    case undefined:
+      return "BEGIN";
+    default: {
+      const unreachable: never = mode;
+      return unreachable;
+    }
+  }
+};
+
+class FileTransaction implements Transaction {
+  private settled = false;
+
+  constructor(
+    private readonly db: DatabaseSync,
+    mode?: TransactionMode,
+  ) {
+    this.db.exec(beginSql(mode));
+  }
+
+  execute(stmt: InStatement, args?: InArgs): Promise<ResultSet> {
+    return Promise.resolve(executeOn(this.db, stmt, args));
+  }
+
+  batch(stmts: InStatement[]): Promise<ResultSet[]> {
+    return Promise.resolve(stmts.map((stmt) => executeOn(this.db, stmt)));
+  }
+
+  executeMultiple(sqlText: string): Promise<void> {
+    this.db.exec(sqlText);
+    return Promise.resolve();
+  }
+
+  async commit(): Promise<void> {
+    if (!this.settled) {
+      this.db.exec("COMMIT");
+      this.settled = true;
+    }
+  }
+
+  async rollback(): Promise<void> {
+    if (!this.settled) {
+      this.db.exec("ROLLBACK");
+      this.settled = true;
+    }
+  }
+
+  close(): void {
+    if (!this.settled) {
+      this.db.exec("ROLLBACK");
+      this.settled = true;
+    }
+  }
+
+  get closed(): boolean {
+    return this.settled;
+  }
+}
+
+const normalizeBatch = (stmt: InStatement | [string, InArgs?]): InStatement => {
+  if (Array.isArray(stmt)) {
+    const [sqlText, args] = stmt;
+    return args === undefined ? sqlText : { sql: sqlText, args };
+  }
+  return stmt;
+};
+
+const settleBatch = (
+  db: DatabaseSync,
+  stmts: ReadonlyArray<InStatement | [string, InArgs?]>,
+): ResultSet[] => {
+  db.exec("BEGIN");
+  try {
+    const results = stmts.map((stmt) => executeOn(db, normalizeBatch(stmt)));
+    db.exec("COMMIT");
+    return results;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+};
+
+class FileClient implements Client {
+  closed = false;
+  protocol = "file";
+
+  constructor(private readonly db: DatabaseSync) {}
+
+  execute(stmt: InStatement, args?: InArgs): Promise<ResultSet> {
+    return Promise.resolve(executeOn(this.db, stmt, args));
+  }
+
+  batch(stmts: Array<InStatement | [string, InArgs?]>): Promise<ResultSet[]> {
+    return Promise.resolve(settleBatch(this.db, stmts));
+  }
+
+  migrate(stmts: InStatement[]): Promise<ResultSet[]> {
+    this.db.exec("PRAGMA foreign_keys = OFF");
+    try {
+      const results = settleBatch(this.db, stmts);
+      this.db.exec("PRAGMA foreign_keys = ON");
+      return Promise.resolve(results);
+    } catch (error) {
+      this.db.exec("PRAGMA foreign_keys = ON");
+      return Promise.reject(error);
+    }
+  }
+
+  transaction(mode?: TransactionMode): Promise<Transaction> {
+    return Promise.resolve(new FileTransaction(this.db, mode));
+  }
+
+  executeMultiple(sqlText: string): Promise<void> {
+    this.db.exec(sqlText);
+    return Promise.resolve();
+  }
+
+  sync(): Promise<{ frames_synced: number; frame_no: number }> {
+    return Promise.reject(
+      new DatabaseError({ message: "File databases do not sync.", cause: undefined }),
+    );
+  }
+
+  close(): void {
+    if (!this.closed) {
+      this.closed = true;
+      this.db.close();
+    }
+  }
+
+  reconnect(): void {
+    this.closed = false;
+  }
+}
+
+const openFileClient = (url: string): Client => new FileClient(new DatabaseSync(sqlitePath(url)));
+
+const openClient = (url: string, authToken: string | undefined): Client => {
   const choice = clientChoice(url, authToken);
   switch (choice.kind) {
     case "local":
-      return createNodeClient({ url, timeout: 0 });
+      return openFileClient(url);
     case "remote":
       return createClient({ url, authToken: choice.authToken });
     case "unconfigured":
@@ -130,9 +402,14 @@ const openClient = (url: string, authToken: string | undefined) => {
 
 const createDatabase = async (url: string, authToken: string | undefined): Promise<Db> => {
   const client = openClient(url, authToken);
-  const db = drizzle({ client, schema: databaseSchema });
-  await prepareDatabase(db, url);
-  return db;
+  try {
+    const db = drizzle({ client, schema: databaseSchema });
+    await prepareDatabase(db, url);
+    return db;
+  } catch (error) {
+    client.close();
+    throw error;
+  }
 };
 
 const loadDatabase = (url: string, authToken: string | undefined): Promise<Db> => {
