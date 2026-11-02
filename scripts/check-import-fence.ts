@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import * as ts from "typescript";
+import { scanWriteDoors } from "./check-write-doors.ts";
 
 const projectRoot = process.argv[2] ?? process.cwd();
 const sourceRoot = join(projectRoot, "src");
@@ -460,6 +461,11 @@ if (!existsSync(changelog)) {
   }
 }
 
+const doors = scanWriteDoors(projectRoot);
+for (const failure of doors.failures) {
+  failures.push(failure);
+}
+
 if (failures.length > 0) {
   for (const failure of new Set(failures)) {
     console.error(failure);
@@ -468,3 +474,4 @@ if (failures.length > 0) {
 }
 
 console.log(`import fence: ${files.length} files`);
+console.log(`write doors: ${doors.files} files`);
