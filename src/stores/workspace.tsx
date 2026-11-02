@@ -1,6 +1,6 @@
 import { useLiveQuery, useDbClient, type Collection } from "@tanstack/react-db";
-import { createContext, use, useMemo, type ReactNode } from "react";
-import { changelogCollections } from "./collections";
+import { createContext, use, useEffect, useMemo, type ReactNode } from "react";
+import { bindMemoSync, changelogCollections } from "./collections";
 import type { Entry, Memo, Source, Track } from "../types/schemas";
 
 type EntryCollection = Collection<Entry, string>;
@@ -23,23 +23,37 @@ type WorkspaceValue = {
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
 
+const noRows: readonly [] = [];
+
 const rows = <T extends { readonly id: string }>(
   data: ReadonlyArray<T> | undefined,
-): readonly T[] => data ?? [];
+): readonly T[] => data ?? noRows;
 
 export function WorkspaceProvider({ children }: { readonly children: ReactNode }) {
   const client = useDbClient();
+  const memoCollection = client.collection(changelogCollections.memos);
   const trackQuery = useLiveQuery((q) => q.from({ track: changelogCollections.tracks }));
   const sourceQuery = useLiveQuery((q) => q.from({ source: changelogCollections.sources }));
   const entryQuery = useLiveQuery((q) => q.from({ entry: changelogCollections.entries }));
   const memoQuery = useLiveQuery((q) => q.from({ memo: changelogCollections.memos }));
+  const memoRows = rows(memoQuery.data);
+
+  useEffect(() => {
+    bindMemoSync({
+      idsFor: (entryIds) => {
+        const wanted = new Set(entryIds);
+        return memoRows.flatMap((memo) => (wanted.has(memo.entryId) ? [memo.id] : []));
+      },
+      drop: (ids) => memoCollection.utils.writeDelete([...ids]),
+    });
+  }, [memoCollection, memoRows]);
 
   const value = useMemo<WorkspaceValue>(
     () => ({
       tracks: rows(trackQuery.data),
       sources: rows(sourceQuery.data),
       entries: rows(entryQuery.data),
-      memos: rows(memoQuery.data),
+      memos: memoRows,
       isLoading:
         trackQuery.isLoading ||
         sourceQuery.isLoading ||
@@ -53,15 +67,16 @@ export function WorkspaceProvider({ children }: { readonly children: ReactNode }
       tracksCollection: client.collection(changelogCollections.tracks),
       sourcesCollection: client.collection(changelogCollections.sources),
       entriesCollection: client.collection(changelogCollections.entries),
-      memosCollection: client.collection(changelogCollections.memos),
+      memosCollection: memoCollection,
     }),
     [
       client,
       entryQuery.data,
       entryQuery.isLoading,
       entryQuery.isLoadingError,
-      memoQuery.data,
+      memoCollection,
       memoQuery.isLoading,
+      memoRows,
       memoQuery.isLoadingError,
       sourceQuery.data,
       sourceQuery.isLoading,

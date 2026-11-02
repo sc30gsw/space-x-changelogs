@@ -1,3 +1,4 @@
+import { Temporal } from "@js-temporal/polyfill";
 import * as v from "valibot";
 import type { Entry, Memo, Source, Track } from "../lib/db/schema";
 import { entryKinds } from "../utils/kinds";
@@ -44,7 +45,16 @@ const summarySchema = v.pipe(
 );
 const bodySchema = v.pipe(v.string(), v.maxLength(20000));
 const memoBodySchema = v.pipe(v.string(), v.minLength(1), v.maxLength(20000));
-const publishedAtSchema = v.pipe(v.string(), v.minLength(1, "公開日時を入力してください"));
+const isInstant = (value: string): boolean => {
+  try {
+    Temporal.Instant.from(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const publishedAtSchema = v.pipe(v.string(), v.check(isInstant, "公開日時は Instant です。"));
 const publishedAtLocalSchema = v.pipe(
   v.string(),
   v.regex(jstLocalPattern, "公開日時を入力してください"),
@@ -55,7 +65,6 @@ export type { Entry, Memo, Source, Track };
 export type TrackChanges = Partial<Pick<Track, "name" | "slug">>;
 export type SourceChanges = Partial<Pick<Source, "label" | "url">>;
 export type MemoChanges = Partial<Pick<Memo, "body">>;
-export type EntryChanges = Partial<Omit<Entry, "id">>;
 export type EntryFormValues = Pick<
   Entry,
   "trackId" | "kind" | "title" | "url" | "publishedAt" | "summary" | "body"
@@ -68,13 +77,16 @@ export type TrackFormValues = Pick<Track, "name" | "slug">;
 export type SourceFormValues = Pick<Source, "label" | "url">;
 export type TrackUpdate = { readonly id: Track["id"]; readonly changes: TrackChanges };
 export type SourceUpdate = { readonly id: Source["id"]; readonly changes: SourceChanges };
-export type EntryUpdate = { readonly id: Entry["id"]; readonly changes: EntryChanges };
 export type MemoUpdate = { readonly id: Memo["id"]; readonly changes: MemoChanges };
 export type SeedSource = Pick<Source, "id" | "label" | "url">;
 export type SeedTrack = Pick<Track, "id" | "name" | "slug"> & {
   readonly sources: readonly SeedSource[];
 };
-export type CaughtUpWrite = Pick<Entry, "id" | "caughtUp"> & { readonly now: string };
+export type CaughtUpWrite = {
+  readonly ids: readonly Entry["id"][];
+  readonly caughtUp: Entry["caughtUp"];
+  readonly now: string;
+};
 export type MemoWrite = Pick<Memo, "id" | "entryId" | "body"> & { readonly now: string };
 
 export const trackSchema = v.pipe(
@@ -263,59 +275,10 @@ export const sourceUpdatesSchema = v.array(
   ),
 );
 
-export const entryUpdatesSchema = v.array(
-  v.pipe(
-    v.object({
-      id: idSchema,
-      changes: v.object({
-        trackId: v.optional(idSchema),
-        kind: v.optional(kindSchema),
-        title: v.optional(titleSchema),
-        url: v.optional(httpUrlSchema),
-        publishedAt: v.optional(publishedAtSchema),
-        summary: v.optional(summarySchema),
-        body: v.optional(bodySchema),
-        caughtUp: v.optional(v.boolean()),
-        createdAt: v.optional(timestampSchema),
-        updatedAt: v.optional(timestampSchema),
-      }),
-    }),
-    v.transform((row): EntryUpdate => {
-      const changes: EntryChanges = {};
-      if (row.changes.trackId !== undefined) {
-        changes.trackId = row.changes.trackId;
-      }
-      if (row.changes.kind !== undefined) {
-        changes.kind = row.changes.kind;
-      }
-      if (row.changes.title !== undefined) {
-        changes.title = row.changes.title;
-      }
-      if (row.changes.url !== undefined) {
-        changes.url = row.changes.url;
-      }
-      if (row.changes.publishedAt !== undefined) {
-        changes.publishedAt = row.changes.publishedAt;
-      }
-      if (row.changes.summary !== undefined) {
-        changes.summary = row.changes.summary;
-      }
-      if (row.changes.body !== undefined) {
-        changes.body = row.changes.body;
-      }
-      if (row.changes.caughtUp !== undefined) {
-        changes.caughtUp = row.changes.caughtUp;
-      }
-      if (row.changes.createdAt !== undefined) {
-        changes.createdAt = row.changes.createdAt;
-      }
-      if (row.changes.updatedAt !== undefined) {
-        changes.updatedAt = row.changes.updatedAt;
-      }
-      return { id: row.id, changes };
-    }),
-  ),
-);
+export const caughtUpSchema = v.object({
+  ids: v.pipe(v.array(idSchema), v.minLength(1)),
+  caughtUp: v.boolean(),
+});
 
 export const memoUpdatesSchema = v.array(
   v.pipe(

@@ -4,7 +4,8 @@ import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { drizzle } from "drizzle-orm/libsql/web";
 import { Context, Effect, Layer, Schema } from "effect";
-import { databaseSchema, type AppDatabase } from "./schema";
+import { seedTracks } from "./seed-data";
+import { databaseSchema, sources, tracks, type AppDatabase } from "./schema";
 
 export type Db = AppDatabase;
 
@@ -22,22 +23,18 @@ export class RecordNotFound extends Schema.TaggedError<RecordNotFound>()("Record
   message: Schema.String,
 }) {}
 
-export class RecordRejected extends Schema.TaggedError<RecordRejected>()("RecordRejected", {
-  message: Schema.String,
-  cause: Schema.Defect(),
-}) {}
-
-export type StoreError = DatabaseUnconfigured | DatabaseError | RecordNotFound | RecordRejected;
+export type StoreError = DatabaseUnconfigured | DatabaseError | RecordNotFound;
 
 export const isStoreError = (cause: unknown): cause is StoreError =>
   cause instanceof DatabaseUnconfigured ||
   cause instanceof DatabaseError ||
-  cause instanceof RecordNotFound ||
-  cause instanceof RecordRejected;
+  cause instanceof RecordNotFound;
 
 const isLocalUrl = (url: string): boolean => url.startsWith("file:") || url === ":memory:";
 
 const migratedUrls = new Set<string>();
+const databases = new Map<string, Db>();
+const opening = new Map<string, Promise<Db>>();
 
 const attempt = <A>(task: () => Promise<A>, message: string) =>
   Effect.tryPromise({
@@ -45,17 +42,61 @@ const attempt = <A>(task: () => Promise<A>, message: string) =>
     catch: (cause) => (isStoreError(cause) ? cause : new DatabaseError({ message, cause })),
   });
 
-const enableForeignKeys = (db: Db) =>
-  attempt(() => db.run(sql`PRAGMA foreign_keys = ON`), "Could not enable foreign keys.");
+const errorText = (error: unknown): string => {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
 
-const migrateLocal = (db: Db) =>
-  attempt(
-    () => migrate(db, { migrationsFolder: "drizzle" }),
-    "Could not migrate the local database.",
-  );
+  return error.cause === undefined ? error.message : `${error.message} ${errorText(error.cause)}`;
+};
 
-// A native busy timeout blocks the thread that must commit the other write.
-// Fail immediately and let the Entry write retry after yielding.
+const isUnique = (error: unknown): boolean => errorText(error).includes("UNIQUE constraint failed");
+
+const enableForeignKeys = (db: Db) => db.run(sql`PRAGMA foreign_keys = ON`);
+
+const seedDatabase = async (db: Db): Promise<void> => {
+  const existing = await db.select({ id: tracks.id }).from(tracks).limit(1);
+  if (existing.length > 0) {
+    return;
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(tracks)
+        .values(seedTracks.map((track) => ({ id: track.id, name: track.name, slug: track.slug })));
+      const sourceRows = seedTracks.flatMap((track) =>
+        track.sources.map((source, position) => ({
+          id: source.id,
+          trackId: track.id,
+          label: source.label,
+          url: source.url,
+          position,
+        })),
+      );
+      if (sourceRows.length > 0) {
+        await tx.insert(sources).values(sourceRows);
+      }
+    });
+  } catch (error) {
+    if (!isUnique(error)) {
+      throw error;
+    }
+  }
+};
+
+const prepareDatabase = async (db: Db, url: string): Promise<void> => {
+  if (url === ":memory:" || (isLocalUrl(url) && !migratedUrls.has(url))) {
+    await migrate(db, { migrationsFolder: "drizzle" });
+    if (url.startsWith("file:")) {
+      migratedUrls.add(url);
+    }
+  }
+
+  await enableForeignKeys(db);
+  await seedDatabase(db);
+};
+
 type ClientChoice =
   | { readonly kind: "local" }
   | { readonly kind: "unconfigured" }
@@ -71,60 +112,54 @@ const clientChoice = (url: string, authToken: string | undefined): ClientChoice 
   return { kind: "remote", authToken };
 };
 
-type PrepareChoice =
-  | { readonly kind: "memory" }
-  | { readonly kind: "file"; readonly url: string }
-  | { readonly kind: "ready" };
-
-const prepareChoice = (url: string): PrepareChoice => {
-  if (url === ":memory:") {
-    return { kind: "memory" };
-  }
-  if (isLocalUrl(url) && !migratedUrls.has(url)) {
-    return { kind: "file", url };
-  }
-  return { kind: "ready" };
-};
-
-const openClient = Effect.fn("Database.openClient")(function* (
-  url: string,
-  authToken: string | undefined,
-) {
+const openClient = (url: string, authToken: string | undefined) => {
   const choice = clientChoice(url, authToken);
   switch (choice.kind) {
     case "local":
       return createNodeClient({ url, timeout: 0 });
-    case "unconfigured":
-      return yield* new DatabaseUnconfigured();
     case "remote":
       return createClient({ url, authToken: choice.authToken });
+    case "unconfigured":
+      throw new DatabaseUnconfigured();
     default: {
       const unreachable: never = choice;
       return unreachable;
     }
   }
-});
+};
 
-const prepare = Effect.fn("Database.prepare")(function* (db: Db, url: string) {
-  const choice = prepareChoice(url);
-  switch (choice.kind) {
-    case "memory":
-      yield* migrateLocal(db);
-      break;
-    case "file":
-      yield* migrateLocal(db);
-      migratedUrls.add(choice.url);
-      break;
-    case "ready":
-      break;
-    default: {
-      const unreachable: never = choice;
-      return unreachable;
-    }
+const createDatabase = async (url: string, authToken: string | undefined): Promise<Db> => {
+  const client = openClient(url, authToken);
+  const db = drizzle({ client, schema: databaseSchema });
+  await prepareDatabase(db, url);
+  return db;
+};
+
+const loadDatabase = (url: string, authToken: string | undefined): Promise<Db> => {
+  const cached = databases.get(url);
+  if (cached !== undefined) {
+    return Promise.resolve(cached);
   }
 
-  yield* enableForeignKeys(db);
-});
+  const pending = opening.get(url);
+  if (pending !== undefined) {
+    return pending;
+  }
+
+  const created = createDatabase(url, authToken).then(
+    (db) => {
+      databases.set(url, db);
+      opening.delete(url);
+      return db;
+    },
+    (error: unknown) => {
+      opening.delete(url);
+      throw error;
+    },
+  );
+  opening.set(url, created);
+  return created;
+};
 
 export class Database extends Context.Service<Database, { readonly db: Db }>()(
   "space-x-changelogs/server/Database",
@@ -143,9 +178,7 @@ export class Database extends Context.Service<Database, { readonly db: Db }>()(
         return yield* new DatabaseUnconfigured();
       }
 
-      const client = yield* openClient(url, token);
-      const db = drizzle({ client, schema: databaseSchema });
-      yield* prepare(db, url);
+      const db = yield* attempt(() => loadDatabase(url, token), "Could not open the database.");
       return Database.of({ db });
     }),
   );

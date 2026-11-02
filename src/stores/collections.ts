@@ -11,18 +11,29 @@ import {
   listTracks,
   removeEntriesFn,
   removeMemosFn,
-  saveEntries,
   saveMemos,
   saveSources,
   saveTracks,
+  setCaughtUpFn,
 } from "../api/records";
-import {
-  pickEntryChanges,
-  pickMemoChanges,
-  pickSourceChanges,
-  pickTrackChanges,
-} from "../utils/changes";
+import { pickMemoChanges, pickSourceChanges, pickTrackChanges } from "../utils/changes";
 import { entrySchema, memoSchema, sourceSchema, trackSchema } from "../types/schemas";
+
+type MemoSync = {
+  readonly idsFor: (entryIds: readonly string[]) => readonly string[];
+  readonly drop: (ids: readonly string[]) => Promise<void> | void;
+};
+
+let memoSync: MemoSync | null = null;
+
+export const bindMemoSync = (sync: MemoSync): void => {
+  memoSync = sync;
+};
+
+const memoIdsForEntries = (entryIds: readonly string[]): readonly string[] =>
+  memoSync?.idsFor(entryIds) ?? [];
+
+const dropMemoRows = (ids: readonly string[]): Promise<void> | void => memoSync?.drop(ids);
 
 const trackCollection = collectionOptions("tracks", (client) =>
   queryCollectionOptions({
@@ -85,18 +96,37 @@ const entryCollection = collectionOptions("entries", (client) =>
     schema: entrySchema,
     getKey: (entry) => entry.id,
     onUpdate: async ({ transaction, collection }) => {
-      const saved = await saveEntries({
-        data: transaction.mutations.map((mutation) => ({
-          id: String(mutation.key),
-          changes: pickEntryChanges(mutation.changes),
-        })),
-      });
-      await collection.utils.writeUpsert(saved);
+      const caughtUpIds: string[] = [];
+      const unreadIds: string[] = [];
+      for (const mutation of transaction.mutations) {
+        const caughtUp = mutation.changes.caughtUp;
+        if (caughtUp === undefined) {
+          continue;
+        }
+        const ids = caughtUp ? caughtUpIds : unreadIds;
+        ids.push(String(mutation.key));
+      }
+      const caughtUpRows =
+        caughtUpIds.length === 0
+          ? []
+          : await setCaughtUpFn({ data: { ids: caughtUpIds, caughtUp: true } });
+      const unreadRows =
+        unreadIds.length === 0
+          ? []
+          : await setCaughtUpFn({ data: { ids: unreadIds, caughtUp: false } });
+      const saved = [...caughtUpRows, ...unreadRows];
+      if (saved.length > 0) {
+        await collection.utils.writeUpsert(saved);
+      }
     },
     onDelete: async ({ transaction, collection }) => {
       const keys = transaction.mutations.map((mutation) => String(mutation.key));
       await removeEntriesFn({ data: keys });
       await collection.utils.writeDelete(keys);
+      const memoIds = memoIdsForEntries(keys);
+      if (memoIds.length > 0) {
+        await dropMemoRows(memoIds);
+      }
     },
   }),
 );

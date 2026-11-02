@@ -61,6 +61,11 @@ function TrackCreateForm() {
           <Button type="submit" loading={form.isSubmitting}>
             Track を追加
           </Button>
+          {form.errors?.map((error) => (
+            <Text role="alert" c="red" key={error}>
+              {error}
+            </Text>
+          ))}
           {message !== null ? <Text role="status">{message}</Text> : null}
         </Stack>
       </Form>
@@ -74,9 +79,11 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
   const trackSources = sources
     .filter((source) => source.trackId === trackId)
     .toSorted((left, right) => left.position - right.position || left.id.localeCompare(right.id));
-  const [name, setName] = useState(track?.name ?? "");
-  const [slug, setSlug] = useState(track?.slug ?? "");
   const [message, setMessage] = useState<string | null>(null);
+  const trackForm = useForm({
+    schema: trackFormSchema,
+    initialInput: { name: track?.name ?? "", slug: track?.slug ?? "" },
+  });
   const form = useForm({
     schema: sourceFormSchema,
     initialInput: { label: "", url: "" },
@@ -86,16 +93,11 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
     return null;
   }
 
-  const saveTrack = async () => {
-    const parsedName = name.trim();
-    const parsedSlug = slug.trim();
-    if (parsedName.length === 0 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(parsedSlug)) {
-      setMessage("名前と slug を確認してください");
-      return;
-    }
+  const saveTrack: SubmitHandler<typeof trackFormSchema> = async (output: TrackFormValues) => {
+    setMessage(null);
     const transaction = tracksCollection.update(track.id, (draft) => {
-      draft.name = parsedName;
-      draft.slug = parsedSlug;
+      draft.name = output.name;
+      draft.slug = output.slug;
     });
     await transaction.when("settled");
     setMessage("保存しました");
@@ -119,20 +121,40 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
       <Title order={2} size="h3">
         {track.name}
       </Title>
+      <Form of={trackForm} onSubmit={saveTrack}>
+        <Stack gap="sm" mt="sm">
+          <Field of={trackForm} path={["name"]}>
+            {(field) => (
+              <TextInput
+                {...field.props}
+                label="名前"
+                value={field.input}
+                error={field.errors?.[0]}
+              />
+            )}
+          </Field>
+          <Field of={trackForm} path={["slug"]}>
+            {(field) => (
+              <TextInput
+                {...field.props}
+                label="slug"
+                value={field.input}
+                error={field.errors?.[0]}
+              />
+            )}
+          </Field>
+          <Button type="submit" loading={trackForm.isSubmitting}>
+            Track を保存
+          </Button>
+          {trackForm.errors?.map((error) => (
+            <Text role="alert" c="red" key={error}>
+              {error}
+            </Text>
+          ))}
+          {message !== null ? <Text role="status">{message}</Text> : null}
+        </Stack>
+      </Form>
       <Stack gap="sm" mt="sm">
-        <TextInput
-          label="名前"
-          value={name}
-          onChange={(event) => setName(event.currentTarget.value)}
-        />
-        <TextInput
-          label="slug"
-          value={slug}
-          onChange={(event) => setSlug(event.currentTarget.value)}
-        />
-        <Button type="button" onClick={() => void saveTrack()}>
-          Track を保存
-        </Button>
         <Text fw={600}>Source</Text>
         {trackSources.map((source) => (
           <SourceEditor key={source.id} sourceId={source.id} />
@@ -160,9 +182,13 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
               )}
             </Field>
             <Button type="submit">Source を追加</Button>
+            {form.errors?.map((error) => (
+              <Text role="alert" c="red" key={error}>
+                {error}
+              </Text>
+            ))}
           </Stack>
         </Form>
-        {message !== null ? <Text role="status">{message}</Text> : null}
       </Stack>
     </section>
   );
@@ -171,36 +197,55 @@ function TrackEditor({ trackId }: { readonly trackId: Track["id"] }) {
 function SourceEditor({ sourceId }: { readonly sourceId: Source["id"] }) {
   const { sources, sourcesCollection } = useWorkspace();
   const source = sources.find((item) => item.id === sourceId);
-  const [label, setLabel] = useState(source?.label ?? "");
-  const [url, setUrl] = useState(source?.url ?? "");
+  const form = useForm({
+    schema: sourceFormSchema,
+    initialInput: { label: source?.label ?? "", url: source?.url ?? "" },
+  });
   if (source === undefined) {
     return null;
   }
 
-  const save = async () => {
+  const save: SubmitHandler<typeof sourceFormSchema> = async (output: SourceFormValues) => {
     const transaction = sourcesCollection.update(source.id, (draft) => {
-      draft.label = label.trim();
-      draft.url = url.trim();
+      draft.label = output.label;
+      draft.url = output.url;
     });
     await transaction.when("settled");
   };
 
   return (
-    <Group align="flex-end" wrap="wrap">
-      <TextInput
-        label={`ラベル ${source.label}`}
-        value={label}
-        onChange={(event) => setLabel(event.currentTarget.value)}
-      />
-      <TextInput
-        label={`URL ${source.label}`}
-        value={url}
-        onChange={(event) => setUrl(event.currentTarget.value)}
-      />
-      <Button type="button" variant="default" onClick={() => void save()}>
-        Source を保存
-      </Button>
-    </Group>
+    <Form of={form} onSubmit={save}>
+      <Group align="flex-end" wrap="wrap">
+        <Field of={form} path={["label"]}>
+          {(field) => (
+            <TextInput
+              {...field.props}
+              label={`ラベル ${source.label}`}
+              value={field.input}
+              error={field.errors?.[0]}
+            />
+          )}
+        </Field>
+        <Field of={form} path={["url"]}>
+          {(field) => (
+            <TextInput
+              {...field.props}
+              label={`URL ${source.label}`}
+              value={field.input}
+              error={field.errors?.[0]}
+            />
+          )}
+        </Field>
+        <Button type="submit" variant="default" loading={form.isSubmitting}>
+          Source を保存
+        </Button>
+      </Group>
+      {form.errors?.map((error) => (
+        <Text role="alert" c="red" key={error}>
+          {error}
+        </Text>
+      ))}
+    </Form>
   );
 }
 

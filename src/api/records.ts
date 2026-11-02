@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import {
-  entryUpdatesSchema,
+  caughtUpSchema,
   keysSchema,
   memoUpdatesSchema,
   memosSchema,
@@ -16,13 +16,13 @@ import {
   insertMemos,
   insertSources,
   insertTracks,
+  markCaughtUp,
   readEntries,
   readMemos,
   readSources,
   readTracks,
   removeEntries,
   removeMemos,
-  updateEntries,
   updateMemos,
   updateSources,
   updateTracks,
@@ -56,9 +56,9 @@ export const submitEntryFn = createServerFn({ method: "POST" })
   .validator(submitEntrySchema)
   .handler(({ data }) => runHttp(ingestEntry(data)));
 
-export const saveEntries = createServerFn({ method: "POST" })
-  .validator(entryUpdatesSchema)
-  .handler(({ data }) => runHttp(updateEntries(data)));
+export const setCaughtUpFn = createServerFn({ method: "POST" })
+  .validator(caughtUpSchema)
+  .handler(({ data }) => runHttp(markCaughtUp(data)));
 
 export const removeEntriesFn = createServerFn({ method: "POST" })
   .validator(keysSchema)

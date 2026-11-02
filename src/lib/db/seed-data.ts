@@ -1,6 +1,5 @@
 import type { SeedTrack } from "../../types/schemas";
 
-// Initial Tracks and Sources. Later Tracks are added from the manage screen.
 export const seedTracks: readonly SeedTrack[] = [
   {
     id: "track-cursor",

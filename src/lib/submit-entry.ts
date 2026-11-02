@@ -54,9 +54,6 @@ const findByUrl = async (tx: Tx, url: string): Promise<Entry | undefined> => {
   return rows[0];
 };
 
-// Overwrite the Entry that already owns this 原文 URL.
-// id, caughtUp, and Memo rows stay. A resubmit must not create a second Entry
-// and must not move a Caught up Entry back to Unread.
 const overwrite = async (tx: Tx, existing: Entry, input: SubmitEntryInput): Promise<Entry> => {
   await tx.update(entries).set(contentOf(input)).where(eq(entries.id, existing.id));
   return requireRow(tx, existing.id);
@@ -129,8 +126,6 @@ const submitInTx = async (tx: Tx, input: SubmitEntryInput): Promise<Entry> => {
 };
 
 // libsql's busy timeout blocks the thread that has to commit the other write.
-// Queue writers on this client, and if sqlite still reports a lock, yield so the
-// holder can commit before the next attempt.
 const writeQueues = new WeakMap<AppDatabase, Promise<unknown>>();
 
 const yieldToHolder = (attempt: number): Promise<void> =>
@@ -156,7 +151,7 @@ const once = async <A>(db: AppDatabase, run: (tx: Tx) => Promise<A>): Promise<A>
   throw new Error("Entry write did not finish.");
 };
 
-const withTransaction = async <A>(db: AppDatabase, run: (tx: Tx) => Promise<A>): Promise<A> => {
+export const withWrite = async <A>(db: AppDatabase, run: (tx: Tx) => Promise<A>): Promise<A> => {
   const previous = writeQueues.get(db) ?? Promise.resolve();
   const result = previous
     .then(
@@ -169,41 +164,92 @@ const withTransaction = async <A>(db: AppDatabase, run: (tx: Tx) => Promise<A>):
 };
 
 export const submitEntry = (db: AppDatabase, input: SubmitEntryInput): Promise<Entry> =>
-  withTransaction(db, (tx) => submitInTx(tx, input));
+  withWrite(db, (tx) => submitInTx(tx, input));
 
-export const setCaughtUp = (db: AppDatabase, input: CaughtUpWrite): Promise<Entry> =>
-  withTransaction(db, async (tx) => {
+export const setCaughtUp = (db: AppDatabase, input: CaughtUpWrite): Promise<Entry[]> =>
+  withWrite(db, async (tx) => {
+    const ids = [...new Set(input.ids)];
+    if (ids.length === 0) {
+      return [];
+    }
+
     await tx
       .update(entries)
       .set({ caughtUp: input.caughtUp, updatedAt: input.now })
-      .where(eq(entries.id, input.id));
-    return requireRow(tx, input.id);
+      .where(inArray(entries.id, ids));
+    const found = await tx.select().from(entries).where(inArray(entries.id, ids));
+    if (found.length !== ids.length) {
+      throw new Error("Could not update Caught up.");
+    }
+
+    const byId = new Map(found.map((row) => [row.id, row]));
+    return ids.map((id) => {
+      const row = byId.get(id);
+      if (row === undefined) {
+        throw new Error("Could not update Caught up.");
+      }
+      return row;
+    });
   });
 
-export const insertMemo = (db: AppDatabase, input: MemoWrite): Promise<Memo> =>
-  withTransaction(db, async (tx) => {
-    await tx.insert(memos).values({
+const insertMemoRows = async (tx: Tx, rows: readonly Memo[]): Promise<void> => {
+  await tx.insert(memos).values(
+    rows.map((row) => ({
+      id: row.id,
+      entryId: row.entryId,
+      body: row.body,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    })),
+  );
+};
+
+export const insertMemoBatch = (db: AppDatabase, rows: readonly Memo[]): Promise<Memo[]> => {
+  if (rows.length === 0) {
+    return Promise.resolve([]);
+  }
+
+  return withWrite(db, async (tx) => {
+    await insertMemoRows(tx, rows);
+    const ids = rows.map((row) => row.id);
+    const found = await tx
+      .select()
+      .from(memos)
+      .where(inArray(memos.id, [...ids]));
+    const byId = new Map(found.map((row) => [row.id, row]));
+    return ids.map((id) => {
+      const row = byId.get(id);
+      if (row === undefined) {
+        throw new Error(`Memo ${id} was not found after write.`);
+      }
+      return row;
+    });
+  });
+};
+
+export const insertMemo = async (db: AppDatabase, input: MemoWrite): Promise<Memo> => {
+  const [row] = await insertMemoBatch(db, [
+    {
       id: input.id,
       entryId: input.entryId,
       body: input.body,
       createdAt: input.now,
       updatedAt: input.now,
-    });
-    const rows = await tx.select().from(memos).where(eq(memos.id, input.id)).limit(1);
-    const row = rows[0];
-    if (row === undefined) {
-      throw new Error(`Memo ${input.id} was not found after write.`);
-    }
+    },
+  ]);
+  if (row === undefined) {
+    throw new Error(`Memo ${input.id} was not found after write.`);
+  }
 
-    return row;
-  });
+  return row;
+};
 
 export const deleteEntries = (db: AppDatabase, ids: readonly string[]): Promise<void> => {
   if (ids.length === 0) {
     return Promise.resolve();
   }
 
-  return withTransaction(db, async (tx) => {
+  return withWrite(db, async (tx) => {
     await tx.delete(memos).where(inArray(memos.entryId, [...ids]));
     await tx.delete(entries).where(inArray(entries.id, [...ids]));
   });

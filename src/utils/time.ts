@@ -4,7 +4,6 @@ const jst = "Asia/Tokyo";
 
 const pad = (value: number): string => String(value).padStart(2, "0");
 
-// A datetime-local value is a JST wall clock. Missing time is 00:00.
 export const jstLocalPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/u;
 
 export const instantFromJstLocal = (local: string): string => {

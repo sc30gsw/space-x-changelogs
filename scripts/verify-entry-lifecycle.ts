@@ -314,7 +314,7 @@ const catchUp = async (
   now: string,
 ): Promise<void> => {
   const before = defined(await readEntry(db, id), `Entry ${id} was missing before Caught up`);
-  await setCaughtUp(db, { id, caughtUp, now });
+  await setCaughtUp(db, { ids: [id], caughtUp, now });
   const after = defined(await readEntry(db, id), `Entry ${id} was missing after Caught up`);
   assertCaughtUpWrite(before, after, caughtUp, now);
   const target = defined(
@@ -617,10 +617,43 @@ const runGenerated = async (): Promise<void> => {
   }
 };
 
+const assertCaughtUpRollsBack = async (): Promise<void> => {
+  const db = await openDb();
+  const saved = await submitEntry(db, {
+    id: "entry-a",
+    trackId: "track-cursor",
+    kind: "Release",
+    title: "A",
+    url: "https://example.test/rollback",
+    publishedAt: "2026-11-02T00:00:00.000Z",
+    summary: "要約です。",
+    body: "",
+    now: "2026-11-02T00:00:00.000Z",
+  });
+  let failed = false;
+  try {
+    await setCaughtUp(db, {
+      ids: [saved.id, "entry-missing"],
+      caughtUp: true,
+      now: "2026-11-02T01:00:00.000Z",
+    });
+  } catch (error) {
+    failed = error instanceof Error && error.message === "Could not update Caught up.";
+  }
+  if (!failed) {
+    fail("a missing Caught up id was accepted");
+  }
+  const row = defined(await readEntry(db, saved.id), "rolled back Entry is missing");
+  if (row.caughtUp !== false) {
+    fail("a failed Caught up left an earlier row Caught up");
+  }
+};
+
 const main = async (): Promise<void> => {
   try {
     await runCascade();
     await runGenerated();
+    await assertCaughtUpRollsBack();
     console.log("entry lifecycle: 24 sequences of 12 operations, plus the screen cascade, held");
   } finally {
     rmSync(scratchRoot, { recursive: true, force: true });

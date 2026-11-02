@@ -177,7 +177,7 @@ const runScripted = async (): Promise<void> => {
   if (first === undefined) {
     fail("missing first entry");
   }
-  await setCaughtUp(db, { id: first.id, caughtUp: true, now: "2026-11-01T01:00:00.000Z" });
+  await setCaughtUp(db, { ids: [first.id], caughtUp: true, now: "2026-11-01T01:00:00.000Z" });
   first.caughtUp = true;
   const memo = await insertMemo(db, {
     id: "memo-1",
@@ -230,7 +230,7 @@ const runScripted = async (): Promise<void> => {
     fail(`concurrent Ingest left ${raced.length} rows`);
   }
   await setCaughtUp(fresh, {
-    id: raced[0]?.id ?? "",
+    ids: [raced[0]?.id ?? ""],
     caughtUp: true,
     now: "2026-11-01T02:00:00.000Z",
   });
@@ -305,7 +305,7 @@ const runGenerated = async (): Promise<void> => {
       if (roll < 0.8) {
         const caughtUp = random() < 0.5;
         await setCaughtUp(db, {
-          id: target.id,
+          ids: [target.id],
           caughtUp,
           now: `2026-11-01T00:00:${String(step).padStart(2, "0")}.000Z`,
         });

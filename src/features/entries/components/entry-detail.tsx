@@ -2,7 +2,6 @@ import { Anchor, Box, Button, Group, Modal, Stack, Switch, Text, Title } from "@
 import { Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { submitEntryFn } from "../../../api/records";
-import type { EntryWithMemos } from "../../../lib/db/schema";
 import { useWorkspace } from "../../../stores/workspace";
 import type { EntryFormValues } from "../../../types/schemas";
 import {
@@ -40,7 +39,7 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
   }
 
   const track = tracks.find((item) => item.id === entry.trackId);
-  const entryMemos: EntryWithMemos["memos"] = memos
+  const entryMemos = memos
     .filter((memo) => memo.entryId === entry.id)
     .toSorted(
       (left, right) =>
@@ -72,13 +71,8 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
   };
 
   const removeEntry = async () => {
-    const memoIds = entryMemos.map((memo) => memo.id);
     const transaction = entriesCollection.delete(entry.id);
     await transaction.when("settled");
-    if (memoIds.length > 0) {
-      const memoTransaction = memosCollection.delete(memoIds);
-      await memoTransaction.when("settled");
-    }
     setConfirming(false);
   };
 

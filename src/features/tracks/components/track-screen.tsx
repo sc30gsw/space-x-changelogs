@@ -2,7 +2,6 @@ import { Anchor, Box, Button, Checkbox, Group, Select, Stack, Text, Title } from
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { submitEntryFn } from "../../../api/records";
-import type { TrackWithSources } from "../../../lib/db/schema";
 import { useWorkspace } from "../../../stores/workspace";
 import type { EntryFormValues } from "../../../types/schemas";
 import { entryKinds, entryMatchesKind, isKindFilter, type KindFilter } from "../../../utils/kinds";
@@ -35,7 +34,7 @@ export function TrackScreen({ slug }: { readonly slug: string }) {
     );
   }
 
-  const trackSources: TrackWithSources["sources"] = sources
+  const trackSources = sources
     .filter((source) => source.trackId === track.id)
     .toSorted((left, right) => left.position - right.position || left.id.localeCompare(right.id));
   const trackEntries = entries

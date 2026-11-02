@@ -11,8 +11,6 @@ const statusFor = (error: StoreError): number => {
       return 500;
     case "RecordNotFound":
       return 404;
-    case "RecordRejected":
-      return 500;
     case "DatabaseError":
       return 503;
     default: {
@@ -27,7 +25,6 @@ const publicMessage = (error: StoreError): string => {
     case "DatabaseUnconfigured":
       return unconfiguredMessage;
     case "RecordNotFound":
-    case "RecordRejected":
     case "DatabaseError":
       return error.message;
     default: {
@@ -40,7 +37,6 @@ const publicMessage = (error: StoreError): string => {
 const logFailure = (error: StoreError): Effect.Effect<void> => {
   switch (error._tag) {
     case "DatabaseError":
-    case "RecordRejected":
       return Effect.logError(publicMessage(error), error.cause);
     case "DatabaseUnconfigured":
     case "RecordNotFound":
