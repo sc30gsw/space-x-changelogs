@@ -69,6 +69,7 @@ let trackCollection: Collection<Track, string> | null = null;
 let sourceCollection: Collection<Source, string> | null = null;
 let entryCollection: Collection<Entry, string> | null = null;
 let memoCollection: Collection<Memo, string> | null = null;
+let changelogClient: DbClient | null = null;
 
 const ready = <T>(value: T | null): T => {
   if (value === null) {
@@ -270,6 +271,10 @@ export const changelogCollections = {
 } as const;
 
 export function createChangelogClient(): DbClient {
+  if (changelogClient !== null) {
+    return changelogClient;
+  }
+
   const client = new DbClient({
     queryClient: new QueryClient(),
     changelogCollections,
@@ -278,6 +283,7 @@ export function createChangelogClient(): DbClient {
   sourceCollection = client.collection(changelogCollections.sources);
   entryCollection = client.collection(changelogCollections.entries);
   memoCollection = client.collection(changelogCollections.memos);
+  changelogClient = client;
   return client;
 }
 
