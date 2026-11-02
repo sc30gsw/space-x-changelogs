@@ -1,7 +1,6 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { createServerFn } from "@tanstack/react-start";
 import * as v from "valibot";
-import { sanitizeMemo } from "../features/memos/components/memo-editor";
 import { runHttp } from "../lib/boundary.ts";
 import {
   catchUpEffect,
@@ -12,7 +11,6 @@ import {
   saveSourceEffect,
   saveTrackEffect,
   type IngestEntry,
-  type MemoSave,
   type SourceSave,
   type TrackSave,
 } from "../lib/db/write.ts";
@@ -103,18 +101,11 @@ const sourceSaveSchema = v.pipe(
   })),
 );
 
-const memoSaveSchema = v.pipe(
-  v.object({
-    id: idSchema,
-    entryId: idSchema,
-    body: v.pipe(v.string(), v.minLength(1), v.maxLength(20000)),
-  }),
-  v.transform((row): MemoSave => ({
-    id: row.id,
-    entryId: row.entryId,
-    body: sanitizeMemo(row.body),
-  })),
-);
+const memoSaveSchema = v.object({
+  id: idSchema,
+  entryId: idSchema,
+  body: v.pipe(v.string(), v.minLength(1), v.maxLength(20000)),
+});
 
 const idsSchema = v.array(idSchema);
 

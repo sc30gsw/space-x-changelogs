@@ -13,7 +13,7 @@ import type { EntryFormValues } from "../../../types/schemas";
 import { formatJst, instantFromJstLocal, jstLocalFromInstant } from "../../../utils/time";
 import { EntryForm } from "./entry-form";
 import { MarkdownView } from "../../../components/markdown-view";
-import { MemoEditor, memoPlainText, sanitizeMemo } from "../../memos/components/memo-editor";
+import { MemoEditor, memoPlainText } from "../../memos/components/memo-editor";
 
 export function EntryDetail({ entryId }: { readonly entryId: string }) {
   const { entries, memos, tracks, isLoading } = useWorkspace();
@@ -180,7 +180,7 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
                 </>
               ) : (
                 <>
-                  <div dangerouslySetInnerHTML={{ __html: sanitizeMemo(memo.body) }} />
+                  <div dangerouslySetInnerHTML={{ __html: memo.body }} />
                   <Group>
                     <Button
                       type="button"

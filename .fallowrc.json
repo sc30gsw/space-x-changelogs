@@ -6,6 +6,7 @@
     "scripts/verify-entry-url-identity.ts",
     "scripts/verify-entry-lifecycle.ts",
     "scripts/verify-catch-up-transaction.ts",
+    "scripts/verify-memo-html.ts",
     "src/app/router.tsx",
     "src/app/routes/**/*.tsx",
     "src/app/start.ts",
