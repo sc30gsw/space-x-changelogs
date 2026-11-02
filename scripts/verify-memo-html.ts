@@ -3,6 +3,12 @@ import { mkdtempSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createClient } from "@libsql/client";
+import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/libsql/web";
+import { migrate } from "drizzle-orm/libsql/migrator";
+import { databaseSchema, entries, memos, tracks } from "../src/lib/db/schema.ts";
+import { commitMemo } from "../src/lib/db/write.ts";
 import { sanitizeMemo } from "../src/lib/memo-html.ts";
 
 const chromeBin = "/usr/bin/google-chrome-stable";
@@ -241,7 +247,60 @@ const readReport = async (url: string): Promise<string> => {
   }
 };
 
+const linkHtml = '<p><a href="https://example.com/changelog?a=1&amp;b=2">link</a></p>';
+
+const proveResave = async (): Promise<void> => {
+  const root = mkdtempSync(join(tmpdir(), "memo-html-save-"));
+  const client = createClient({ url: `file:${join(root, "memo.db")}` });
+  const db = drizzle({ client, schema: databaseSchema });
+  await migrate(db, { migrationsFolder: "drizzle" });
+  await db.run(sql`PRAGMA foreign_keys = ON`);
+  await db.insert(tracks).values({ id: "track-1", name: "Cursor", slug: "cursor" });
+  await db.insert(entries).values({
+    id: "entry-1",
+    trackId: "track-1",
+    kind: "Release",
+    title: "Memo lock",
+    url: "https://example.com/memo-lock",
+    publishedAt: "2026-11-02T00:00:00.000Z",
+    summary: "",
+    body: "",
+    caughtUp: false,
+    createdAt: "2026-11-02T00:00:00.000Z",
+    updatedAt: "2026-11-02T00:00:00.000Z",
+  });
+  const first = await commitMemo(db, {
+    id: "memo-1",
+    entryId: "entry-1",
+    body: linkHtml,
+    now: "2026-11-02T00:00:00.000Z",
+  });
+  const second = await commitMemo(db, {
+    id: "memo-1",
+    entryId: "entry-1",
+    body: first.body,
+    now: "2026-11-02T00:01:00.000Z",
+  });
+  const stored = await db.select({ body: memos.body }).from(memos).where(eq(memos.id, "memo-1"));
+  const row = stored[0];
+  if (row === undefined) {
+    fail("stored memo is missing");
+  }
+  console.log(`first ${first.body}`);
+  console.log(`second ${row.body}`);
+  if (first.body !== second.body || row.body !== second.body) {
+    fail("second save changed the stored body");
+  }
+  if (row.body.includes("amp;amp")) {
+    fail("stored body escaped the ampersand twice");
+  }
+  if (row.body !== linkHtml) {
+    fail(`stored body was ${row.body}`);
+  }
+};
+
 const main = async (): Promise<void> => {
+  await proveResave();
   const rows = payloads.map(([name, input]) => ({ name, html: sanitizeMemo(input) }));
   const page = await listen(pageFor(rows));
   let report: readonly Probe[];

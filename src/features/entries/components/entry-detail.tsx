@@ -13,7 +13,6 @@ import type { EntryFormValues } from "../../../types/schemas";
 import { formatJst, instantFromJstLocal, jstLocalFromInstant } from "../../../utils/time";
 import { EntryForm } from "./entry-form";
 import { MarkdownView } from "../../../components/markdown-view";
-import { sanitizeMemo } from "../../../lib/memo-html";
 import { MemoEditor, memoPlainText } from "../../memos/components/memo-editor";
 
 export function EntryDetail({ entryId }: { readonly entryId: string }) {
@@ -181,7 +180,7 @@ export function EntryDetail({ entryId }: { readonly entryId: string }) {
                 </>
               ) : (
                 <>
-                  <div dangerouslySetInnerHTML={{ __html: sanitizeMemo(memo.body) }} />
+                  <div dangerouslySetInnerHTML={{ __html: memo.body }} />
                   <Group>
                     <Button
                       type="button"

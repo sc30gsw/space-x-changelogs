@@ -23,6 +23,7 @@ const allowedTags = new Set([
 
 const escapeAttr = (value: string): string =>
   value
+    .replaceAll(/&amp;/giu, "&")
     .replaceAll("&", "&amp;")
     .replaceAll('"', "&quot;")
     .replaceAll("<", "&lt;")
