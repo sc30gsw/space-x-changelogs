@@ -1,5 +1,6 @@
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
+import { sanitizeMemo } from "../memo-html.ts";
 import { nowInstant } from "../../utils/time";
 import {
   Database,
@@ -337,8 +338,9 @@ const commitSource = (db: AppDatabase, input: SourceSave): Promise<Source> =>
     return oneSource(tx, input.id);
   });
 
-export const commitMemo = (db: AppDatabase, input: MemoWrite): Promise<Memo> =>
-  withWrite(db, async (tx) => {
+export const commitMemo = (db: AppDatabase, input: MemoWrite): Promise<Memo> => {
+  const body = sanitizeMemo(input.body);
+  return withWrite(db, async (tx) => {
     const existing = await tx
       .select({ id: memos.id })
       .from(memos)
@@ -348,18 +350,19 @@ export const commitMemo = (db: AppDatabase, input: MemoWrite): Promise<Memo> =>
       await tx.insert(memos).values({
         id: input.id,
         entryId: input.entryId,
-        body: input.body,
+        body,
         createdAt: input.now,
         updatedAt: input.now,
       });
     } else {
       await tx
         .update(memos)
-        .set({ entryId: input.entryId, body: input.body, updatedAt: input.now })
+        .set({ entryId: input.entryId, body, updatedAt: input.now })
         .where(eq(memos.id, input.id));
     }
     return oneMemo(tx, input.id);
   });
+};
 
 export const commitRemoveEntries = (db: AppDatabase, ids: readonly string[]): Promise<void> => {
   if (ids.length === 0) {

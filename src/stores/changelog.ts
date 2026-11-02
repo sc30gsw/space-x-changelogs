@@ -25,6 +25,7 @@ import {
   type SourceSave,
   type TrackSave,
 } from "../lib/db/write.ts";
+import { sanitizeMemo } from "../lib/memo-html.ts";
 import { nowInstant } from "../utils/time";
 
 const listTracks = createServerFn({ method: "GET" }).handler(() => runHttp(readTracks()));
@@ -364,16 +365,17 @@ export async function saveMemo(input: MemoSave): Promise<Memo> {
   const collection = ready(memoCollection);
   const token = crypto.randomUUID();
   const now = nowInstant();
+  const body = sanitizeMemo(input.body);
   const tx = collection.has(input.id)
     ? collection.update(input.id, { metadata: { token } }, (draft) => {
         draft.entryId = input.entryId;
-        draft.body = input.body;
+        draft.body = body;
       })
     : collection.insert(
         {
           id: input.id,
           entryId: input.entryId,
-          body: input.body,
+          body,
           createdAt: now,
           updatedAt: now,
         },
