@@ -8,10 +8,16 @@ import viteReact from "@vitejs/plugin-react";
 
 type ServerHost = "nitro-node" | "cloudflare-workers";
 
-// `pnpm start` and e2e keep Nitro so file: SQLite still opens.
-// `pnpm deploy` sets SERVER_HOST=cloudflare-workers.
-const serverHost = (): ServerHost =>
-  process.env.SERVER_HOST === "cloudflare-workers" ? "cloudflare-workers" : "nitro-node";
+const serverHost = (): ServerHost => {
+  const host = process.env.SERVER_HOST;
+  if (host === undefined) {
+    return "nitro-node";
+  }
+  if (host === "cloudflare-workers") {
+    return "cloudflare-workers";
+  }
+  throw new Error(`SERVER_HOST must be unset or "cloudflare-workers". Received "${host}".`);
+};
 
 const stylexPlugin = stylex.vite({
   lightningcssOptions: { exclude: Features.LightDark },

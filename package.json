@@ -11,7 +11,7 @@
     "build": "vp build",
     "preview": "vp preview",
     "start": "node --env-file-if-exists=.env .output/server/index.mjs",
-    "deploy": "SERVER_HOST=cloudflare-workers vp build && SERVER_HOST=cloudflare-workers wrangler deploy",
+    "deploy": "SERVER_HOST=cloudflare-workers vp build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "format": "vp fmt",
     "lint": "vp lint",

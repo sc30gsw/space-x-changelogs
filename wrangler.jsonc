@@ -13,7 +13,6 @@
       "enabled": true,
     },
   },
-  // Production Turso is in aws-ap-northeast-1. Place fetch handlers next to it.
   "placement": {
     "mode": "targeted",
     "region": "aws:ap-northeast-1",
