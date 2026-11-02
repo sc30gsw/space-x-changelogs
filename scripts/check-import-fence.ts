@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import * as ts from "typescript";
 
 const projectRoot = process.argv[2] ?? process.cwd();
 const sourceRoot = join(projectRoot, "src");
@@ -30,6 +31,13 @@ const forbiddenModules = [
 
 const changelogTail = ["stores", "changelog"];
 
+const globTargets = [
+  "lib/db/schema.ts",
+  "lib/db/write.ts",
+  "api/changelog.ts",
+  "stores/changelog.ts",
+] as const;
+
 const filesUnder = (directory: string): string[] => {
   const found: string[] = [];
   for (const name of readdirSync(directory)) {
@@ -47,7 +55,7 @@ const specifierParts = (specifier: string): string[] => {
   const [pathOnly = specifier] = specifier.split("?");
   return pathOnly
     .replaceAll("\\", "/")
-    .replace(/\.(?:tsx|ts|jsx|js)$/, "")
+    .replace(/\.(?:[cm])?(?:tsx|ts|jsx|js)$/, "")
     .split("/")
     .filter((part) => part !== "" && part !== "." && part !== "..");
 };
@@ -70,160 +78,311 @@ const moduleLabel = (specifier: string): string | undefined => {
   return undefined;
 };
 
-const withoutComments = (source: string): string => {
-  let out = "";
+const sourceKind = (file: string): ts.ScriptKind | undefined => {
+  if (file.endsWith(".tsx")) {
+    return ts.ScriptKind.TSX;
+  }
+  if (file.endsWith(".mts") || file.endsWith(".cts") || file.endsWith(".ts")) {
+    return ts.ScriptKind.TS;
+  }
+  return undefined;
+};
+
+const literalText = (node: ts.Expression): string | undefined => {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return node.text;
+  }
+  if (ts.isParenthesizedExpression(node)) {
+    return literalText(node.expression);
+  }
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = literalText(node.left);
+    const right = literalText(node.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return left + right;
+  }
+  if (ts.isTemplateExpression(node)) {
+    let value = node.head.text;
+    for (const span of node.templateSpans) {
+      const part = literalText(span.expression);
+      if (part === undefined) {
+        return undefined;
+      }
+      value += part + span.literal.text;
+    }
+    return value;
+  }
+  return undefined;
+};
+
+const globMatches = (pattern: string, candidate: string): boolean => {
+  const normalized = pattern
+    .replaceAll("\\", "/")
+    .replace(/^@\//, "")
+    .replace(/^\/src\//, "")
+    .replace(/^src\//, "")
+    .replace(/^\.\//, "");
+  let expression = "^";
   let index = 0;
-  let quote: string | null = null;
-  while (index < source.length) {
-    const char = source[index] ?? "";
-    const next = source[index + 1] ?? "";
-    if (quote !== null) {
-      out += char;
-      if (char === "\\" && quote !== "`") {
-        out += next;
-        index += 2;
-        continue;
-      }
-      if (char === quote) {
-        quote = null;
-      }
-      index += 1;
+  while (index < normalized.length) {
+    if (normalized.startsWith("**/", index)) {
+      expression += "(?:.*/)?";
+      index += 3;
       continue;
     }
-    if (char === "'" || char === '"' || char === "`") {
-      quote = char;
-      out += char;
-      index += 1;
-      continue;
-    }
-    if (char === "/" && next === "/") {
+    if (normalized.startsWith("**", index)) {
+      expression += ".*";
       index += 2;
-      while (index < source.length && source[index] !== "\n") {
-        index += 1;
-      }
-      out += " ";
       continue;
     }
-    if (char === "/" && next === "*") {
-      index += 2;
-      while (index < source.length && !(source[index] === "*" && source[index + 1] === "/")) {
-        index += 1;
-      }
-      index += 2;
-      out += " ";
-      continue;
+    const char = normalized[index] ?? "";
+    if (char === "*") {
+      expression += "[^/]*";
+    } else if (char === "?") {
+      expression += "[^/]";
+    } else if (/[.+^${}()|[\]\\]/.test(char)) {
+      expression += `\\${char}`;
+    } else {
+      expression += char;
     }
-    out += char;
     index += 1;
   }
-  return out;
+  return new RegExp(`${expression}$`).test(candidate);
 };
 
-const quote = "[`\"']";
+const hasModifier = (node: ts.Node, kind: ts.SyntaxKind): boolean => {
+  if (!ts.canHaveModifiers(node)) {
+    return false;
+  }
+  return ts.getModifiers(node)?.some((modifier) => modifier.kind === kind) ?? false;
+};
 
-const specifiersIn = (source: string): string[] => {
-  const found: string[] = [];
-  const patterns = [
-    new RegExp(
-      `\\b(?:import|export)\\s*(?:type\\s*)?[^"'\`;]*?\\bfrom\\s*${quote}([^"'\`]+)${quote}`,
-      "g",
-    ),
-    new RegExp(`\\bimport\\s*${quote}([^"'\`]+)${quote}`, "g"),
-    new RegExp(`\\bimport\\s*\\(\\s*${quote}([^"'\`]+)${quote}`, "g"),
-  ];
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      const specifier = match[1];
-      if (specifier !== undefined) {
-        found.push(specifier);
-      }
+const hasExport = (node: ts.Node): boolean => hasModifier(node, ts.SyntaxKind.ExportKeyword);
+
+const hasDefault = (node: ts.Node): boolean => hasModifier(node, ts.SyntaxKind.DefaultKeyword);
+
+const collectBindingNames = (name: ts.BindingName, into: string[]): void => {
+  if (ts.isIdentifier(name)) {
+    into.push(name.text);
+    return;
+  }
+  for (const element of name.elements) {
+    if (ts.isBindingElement(element)) {
+      collectBindingNames(element.name, into);
     }
   }
-  return found;
 };
 
-const importedCollectionNames = (source: string): string[] => {
-  const names: string[] = [];
-  const groups = new RegExp(
-    `\\b(?:import|export)\\s*(?:type\\s*)?\\{([^}]+)\\}\\s*from\\s*${quote}`,
-    "g",
-  );
-  for (const match of source.matchAll(groups)) {
-    for (const piece of (match[1] ?? "").split(",")) {
-      const trimmed = piece.trim().replace(/^type\s+/, "");
-      if (trimmed.length === 0) {
-        continue;
+const declarationName = (name: ts.DeclarationName | undefined): string | undefined => {
+  if (name === undefined) {
+    return undefined;
+  }
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
+  }
+  return undefined;
+};
+
+type SourceScan = {
+  specifiers: string[];
+  importedCollections: string[];
+  changelogNamespace: boolean;
+  dynamic: boolean;
+  exportStar: boolean;
+  exported: string[];
+};
+
+const scanSource = (file: string, text: string): SourceScan => {
+  const kind = sourceKind(file) ?? ts.ScriptKind.TS;
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
+  const specifiers: string[] = [];
+  const importedCollections: string[] = [];
+  const exported: string[] = [];
+  let changelogNamespace = false;
+  let dynamic = false;
+  let exportStar = false;
+
+  const noteCollection = (name: string) => {
+    if (collectionNames.has(name)) {
+      importedCollections.push(name);
+    }
+  };
+
+  const noteModule = (specifier: string, namespace: boolean) => {
+    specifiers.push(specifier);
+    if (namespace && tailMatches(specifier, changelogTail)) {
+      changelogNamespace = true;
+    }
+  };
+
+  const noteGlob = (pattern: string) => {
+    if (!/[*?{]/.test(pattern)) {
+      noteModule(pattern, tailMatches(pattern, changelogTail));
+      return;
+    }
+    for (const target of globTargets) {
+      if (globMatches(pattern, target)) {
+        noteModule(target, tailMatches(target, changelogTail));
       }
-      const parts = trimmed.split(/\s+as\s+/);
-      for (const name of parts) {
-        const cleaned = name.trim();
-        if (collectionNames.has(cleaned)) {
-          names.push(cleaned);
+    }
+  };
+
+  const noteGlobArgument = (node: ts.Expression) => {
+    if (ts.isArrayLiteralExpression(node)) {
+      for (const element of node.elements) {
+        if (ts.isSpreadElement(element)) {
+          dynamic = true;
+          continue;
+        }
+        noteGlobArgument(element);
+      }
+      return;
+    }
+    const pattern = literalText(node);
+    if (pattern === undefined) {
+      dynamic = true;
+      return;
+    }
+    noteGlob(pattern);
+  };
+
+  const noteImportSpecifier = (element: ts.ImportSpecifier) => {
+    if (element.propertyName !== undefined) {
+      noteCollection(element.propertyName.text);
+    }
+    noteCollection(element.name.text);
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) {
+      const specifier =
+        node.moduleSpecifier === undefined ? undefined : literalText(node.moduleSpecifier);
+      if (specifier === undefined) {
+        dynamic = true;
+      } else {
+        const bindings = node.importClause?.namedBindings;
+        const namespace = bindings !== undefined && ts.isNamespaceImport(bindings);
+        noteModule(specifier, namespace);
+        if (bindings !== undefined && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            noteImportSpecifier(element);
+          }
         }
       }
+      const local = node.importClause?.name;
+      if (local !== undefined) {
+        noteCollection(local.text);
+      }
+    } else if (ts.isImportEqualsDeclaration(node)) {
+      const reference = node.moduleReference;
+      if (ts.isExternalModuleReference(reference) && reference.expression !== undefined) {
+        const specifier = literalText(reference.expression);
+        if (specifier === undefined) {
+          dynamic = true;
+        } else {
+          noteModule(specifier, false);
+        }
+      }
+      noteCollection(node.name.text);
+    } else if (ts.isExportDeclaration(node)) {
+      const star = node.exportClause === undefined || ts.isNamespaceExport(node.exportClause);
+      if (star) {
+        exportStar = true;
+      }
+      if (node.moduleSpecifier === undefined) {
+        if (node.exportClause !== undefined && ts.isNamedExports(node.exportClause)) {
+          for (const element of node.exportClause.elements) {
+            exported.push(element.name.text);
+          }
+        }
+      } else {
+        const specifier = literalText(node.moduleSpecifier);
+        if (specifier === undefined) {
+          dynamic = true;
+        } else {
+          noteModule(specifier, star);
+        }
+        if (node.exportClause !== undefined && ts.isNamedExports(node.exportClause)) {
+          for (const element of node.exportClause.elements) {
+            exported.push(element.name.text);
+            noteCollection(element.name.text);
+            if (element.propertyName !== undefined) {
+              noteCollection(element.propertyName.text);
+            }
+          }
+        }
+      }
+    } else if (ts.isExportAssignment(node)) {
+      exported.push("default");
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const argument = node.arguments[0];
+      if (argument === undefined) {
+        dynamic = true;
+      } else {
+        const specifier = literalText(argument);
+        if (specifier === undefined) {
+          dynamic = true;
+        } else {
+          noteModule(specifier, true);
+        }
+      }
+    } else if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const meta = node.expression.expression;
+      const called = node.expression.name.text;
+      if (
+        (called === "glob" || called === "globEager") &&
+        ts.isMetaProperty(meta) &&
+        meta.keywordToken === ts.SyntaxKind.ImportKeyword &&
+        meta.name.text === "meta"
+      ) {
+        const argument = node.arguments[0];
+        if (argument === undefined) {
+          dynamic = true;
+        } else {
+          noteGlobArgument(argument);
+        }
+      }
+    } else if (
+      hasExport(node) &&
+      (ts.isFunctionDeclaration(node) ||
+        ts.isClassDeclaration(node) ||
+        ts.isInterfaceDeclaration(node) ||
+        ts.isEnumDeclaration(node) ||
+        ts.isTypeAliasDeclaration(node) ||
+        ts.isModuleDeclaration(node))
+    ) {
+      const name = declarationName(node.name);
+      if (name !== undefined) {
+        exported.push(name);
+      }
+      if (hasDefault(node)) {
+        exported.push("default");
+      }
+    } else if (hasExport(node) && ts.isVariableStatement(node)) {
+      for (const declaration of node.declarationList.declarations) {
+        collectBindingNames(declaration.name, exported);
+      }
     }
-  }
-  return names;
-};
+    ts.forEachChild(node, visit);
+  };
 
-const importsChangelogModule = (source: string): boolean => {
-  const patterns = [
-    new RegExp(
-      `\\bimport\\s*\\*\\s*as\\s+[A-Za-z_$][\\w$]*\\s*from\\s*${quote}([^"'\`]+)${quote}`,
-      "g",
-    ),
-    new RegExp(`\\bexport\\s*\\*\\s*from\\s*${quote}([^"'\`]+)${quote}`, "g"),
-    new RegExp(
-      `\\bexport\\s*\\*\\s*as\\s+[A-Za-z_$][\\w$]*\\s*from\\s*${quote}([^"'\`]+)${quote}`,
-      "g",
-    ),
-    new RegExp(`\\bimport\\s*\\(\\s*${quote}([^"'\`]+)${quote}`, "g"),
-  ];
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      const specifier = match[1];
-      if (specifier !== undefined && tailMatches(specifier, changelogTail)) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-const exportedNames = (source: string): string[] => {
-  const names = new Set<string>();
-  const declarations =
-    /\bexport\s+(?:declare\s+)?(?:async\s+)?(?:function|const|let|var|class|enum|interface|type)\s+([A-Za-z_$][\w$]*)/g;
-  for (const match of source.matchAll(declarations)) {
-    const name = match[1];
-    if (name !== undefined) {
-      names.add(name);
-    }
-  }
-  const groups = /\bexport\s+(?:type\s+)?\{([^}]+)\}/g;
-  for (const match of source.matchAll(groups)) {
-    for (const piece of (match[1] ?? "").split(",")) {
-      const trimmed = piece.trim().replace(/^type\s+/, "");
-      if (trimmed.length === 0 || trimmed.includes("from ")) {
-        continue;
-      }
-      const parts = trimmed.split(/\s+as\s+/);
-      const name = (parts[1] ?? parts[0] ?? "").trim();
-      if (/^[A-Za-z_$][\w$]*$/.test(name)) {
-        names.add(name);
-      }
-    }
-  }
-  if (/\bexport\s+default\b/.test(source)) {
-    names.add("default");
-  }
-  return [...names];
+  visit(source);
+  return {
+    specifiers,
+    importedCollections,
+    changelogNamespace,
+    dynamic,
+    exportStar,
+    exported,
+  };
 };
 
 const occurrences = (line: string, needle: string): number => line.split(needle).length - 1;
 
 const guardedFile = (file: string): boolean =>
-  /\.(?:ts|tsx)$/.test(file) && guardedTrees.some((tree) => file.startsWith(tree));
+  sourceKind(file) !== undefined && guardedTrees.some((tree) => file.startsWith(tree));
 
 if (!existsSync(sourceRoot)) {
   console.error(`missing ${sourceRoot}`);
@@ -236,21 +395,29 @@ const innerHtml: string[] = [];
 
 for (const file of files) {
   const text = readFileSync(join(sourceRoot, file), "utf8");
-  const scanned = withoutComments(text);
-  if (guardedFile(file)) {
-    for (const specifier of specifiersIn(scanned)) {
-      const label = moduleLabel(specifier);
-      if (label !== undefined) {
-        failures.push(`src/${file} imports ${label}`);
+  if (sourceKind(file) !== undefined) {
+    const scan = scanSource(file, text);
+    if (guardedFile(file)) {
+      for (const specifier of scan.specifiers) {
+        const label = moduleLabel(specifier);
+        if (label !== undefined) {
+          failures.push(`src/${file} imports ${label}`);
+        }
+      }
+      if (scan.dynamic) {
+        failures.push(`src/${file} imports a dynamic path`);
       }
     }
-  }
-  if (/\.(?:ts|tsx)$/.test(file) && !shellFiles.has(file)) {
-    for (const name of importedCollectionNames(scanned)) {
-      failures.push(`src/${file} imports ${name}`);
-    }
-    if (importsChangelogModule(scanned)) {
-      failures.push(`src/${file} imports changelogCollections`);
+    if (!shellFiles.has(file)) {
+      for (const name of scan.importedCollections) {
+        failures.push(`src/${file} imports ${name}`);
+      }
+      if (scan.changelogNamespace) {
+        failures.push(`src/${file} imports changelogCollections`);
+      }
+      if (scan.dynamic && !guardedFile(file)) {
+        failures.push(`src/${file} imports a dynamic path`);
+      }
     }
   }
   for (const [index, line] of text.split("\n").entries()) {
@@ -273,11 +440,11 @@ const changelog = join(sourceRoot, "stores/changelog.ts");
 if (!existsSync(changelog)) {
   failures.push("missing src/stores/changelog.ts");
 } else {
-  const source = withoutComments(readFileSync(changelog, "utf8"));
-  if (/\bexport\s*\*/.test(source)) {
+  const scan = scanSource("stores/changelog.ts", readFileSync(changelog, "utf8"));
+  if (scan.exportStar) {
     failures.push("src/stores/changelog.ts exports *");
   }
-  for (const name of exportedNames(source)) {
+  for (const name of scan.exported) {
     if (!allowedExports.has(name)) {
       failures.push(`src/stores/changelog.ts exports ${name}`);
     }
