@@ -11,6 +11,7 @@ import {
   commitIngest as ingestEntry,
   commitMemo as saveMemo,
 } from "../src/lib/db/write.ts";
+import { botToolSpecs, runBotTool, type BotDoors } from "../src/features/bots/utils/bot-tools.ts";
 import { entryKinds } from "../src/utils/kinds.ts";
 const scratchRoot = mkdtempSync(join(tmpdir(), "entry-url-identity-"));
 let databaseSerial = 0;
@@ -327,11 +328,94 @@ const runGenerated = async (): Promise<void> => {
   }
 };
 
+const emptyWorkspace = {
+  tracks: [],
+  sources: [],
+  entries: [],
+  memos: [],
+  isLoading: false,
+  isError: false,
+};
+
+const botDoors = (db: AppDatabase, now: string): BotDoors => ({
+  ingestEntry: (input) => ingestEntry(db, { ...input, now }),
+  catchUp: (marks) => commitCatchUp(db, marks, now),
+  saveTrack: async () => fail("the bot url check called saveTrack"),
+  saveSource: async () => fail("the bot url check called saveSource"),
+  saveMemo: (input) => saveMemo(db, { ...input, now }),
+  removeEntries: async () => fail("the bot url check called removeEntries"),
+  removeMemos: async () => fail("the bot url check called removeMemos"),
+});
+
+const toolNamed = (name: string) =>
+  defined(
+    botToolSpecs.find((spec) => spec.name === name),
+    `missing bot tool ${name}`,
+  );
+
+const assertBotKeepsUrl = async (): Promise<void> => {
+  const db = await openDb();
+  const first = await runBotTool(
+    toolNamed("ingest_entry"),
+    {
+      trackId: "track-cursor",
+      kind: "Release",
+      title: "Bot A",
+      url: "https://example.test/bot",
+      publishedAt: "2026-11-03T00:00:00.000Z",
+      summary: "bot",
+    },
+    botDoors(db, "2026-11-03T00:00:00.000Z"),
+    emptyWorkspace,
+  );
+  const id =
+    typeof first === "object" &&
+    first !== null &&
+    "id" in first &&
+    typeof first.id === "string" &&
+    !("error" in first)
+      ? first.id
+      : undefined;
+  if (id === undefined) {
+    fail("bot ingest did not return an Entry");
+  }
+  await runBotTool(
+    toolNamed("catch_up"),
+    { marks: [{ id, caughtUp: true }] },
+    botDoors(db, "2026-11-03T01:00:00.000Z"),
+    emptyWorkspace,
+  );
+  await runBotTool(
+    toolNamed("ingest_entry"),
+    {
+      trackId: "track-cursor",
+      kind: "X Post",
+      title: "Bot B",
+      url: "https://example.test/bot",
+      publishedAt: "2026-11-03T02:00:00.000Z",
+      summary: "bot again",
+    },
+    botDoors(db, "2026-11-03T02:00:00.000Z"),
+    emptyWorkspace,
+  );
+  const after = await snapshot(db);
+  if (after.entries.length !== 1) {
+    fail("bot overwrite duplicated the Entry");
+  }
+  const row = defined(after.entries[0], "bot overwrite lost the Entry");
+  if (row.id !== id || row.caughtUp !== true || row.title !== "Bot B") {
+    fail("bot overwrite moved id or Caught up");
+  }
+};
+
 const main = async (): Promise<void> => {
   try {
     await runScripted();
     await runGenerated();
-    console.log("entry url identity: 40 sequences of 18 operations, plus concurrent Ingest, held");
+    await assertBotKeepsUrl();
+    console.log(
+      "entry url identity: 40 sequences of 18 operations, plus concurrent Ingest and the bot tool, held",
+    );
   } finally {
     rmSync(scratchRoot, { recursive: true, force: true });
   }
