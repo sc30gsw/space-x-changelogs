@@ -14,7 +14,7 @@ Any screen, button `検索`. `watcher` Basic credential.
 
 ## Driving it with e2e
 
-`tests/spotlight.e2e.ts`. Locators: `getByRole('button', '検索')`, `getByLabel('検索')`, then `getByRole('button', { name: '<title>', exact: false })`. The result is a button whose name is `<title> <Track> · <kind>`, not an option. The Memo field filled before the search is `getByRole('region', 'Memo').getByRole('textbox')`. Live walk: `open_session`, add a Memo, `tap` `検索`, `type` the Memo text, `tap` the option, `observe` the detail heading.
+`tests/spotlight.e2e.ts`. Locators: `getByRole('button', '検索')`, `getByLabel('検索')`, then `getByRole('button', { name: '<title>', exact: false })`. The result is a button. Its label is the title and its description is `<Track> <kind>` with a space between them. The Memo field filled before the search is `getByRole('region', 'Memo').getByRole('textbox')`. Live walk: `open_session`, add a Memo, `tap` `検索`, `type` the Memo text, `tap` the result button, `observe` the detail heading.
 
 ## Proof
 
