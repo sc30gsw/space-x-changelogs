@@ -26,7 +26,7 @@ web mcp writes: 8 tools, 7 write functions, one call each, stored rows held
 
 ## Coverage
 
-Sync commit: `c394877802edff07fd204839e996a352e731ffba`
+Sync commit: `9d934fdf50eadac7ad50f3e1843753dbd1400069`
 
 このコミットで、チェックが次の実装をそのまま呼んでいることを確認した。対象ファイルがこのコミットより後に変わっていたら、先に `pnpm verify:web-mcp` を実行し、チェックがまだその実装を説明していると確認してから sync commit を進める。ずれを戻すときは `/maintain-formal-verification-skill` を使う。
 
