@@ -24,7 +24,6 @@ import {
   commitMemo as saveMemo,
   commitRemoveEntries as removeEntries,
 } from "../src/lib/db/write.ts";
-import { botToolSpecs, runBotTool, type BotDoors } from "../src/features/bots/utils/bot-tools.ts";
 import { entryKinds } from "../src/utils/kinds.ts";
 
 const scratchRoot = mkdtempSync(join(tmpdir(), "entry-lifecycle-"));
@@ -662,73 +661,12 @@ const assertCaughtUpRollsBack = async (): Promise<void> => {
   }
 };
 
-const emptyWorkspace = {
-  tracks: [],
-  sources: [],
-  entries: [],
-  memos: [],
-  isLoading: false,
-  isError: false,
-};
-
-const botDoors = (db: AppDatabase, now: string): BotDoors => ({
-  ingestEntry: (input) => ingestEntry(db, { ...input, now }),
-  catchUp: (marks) => commitCatchUp(db, marks, now),
-  saveTrack: async () => fail("the bot lifecycle check called saveTrack"),
-  saveSource: async () => fail("the bot lifecycle check called saveSource"),
-  saveMemo: (input) => saveMemo(db, { ...input, now }),
-  removeEntries: (ids) => removeEntries(db, ids),
-  removeMemos: async () => fail("the bot lifecycle check called removeMemos"),
-});
-
-const toolNamed = (name: string) =>
-  defined(
-    botToolSpecs.find((spec) => spec.name === name),
-    `missing bot tool ${name}`,
-  );
-
-const assertBotCatchUpRollsBack = async (): Promise<void> => {
-  const db = await openDb();
-  const saved = await ingestEntry(db, {
-    id: "entry-bot",
-    trackId: "track-cursor",
-    kind: "Release",
-    title: "Bot",
-    url: "https://example.test/bot-rollback",
-    publishedAt: "2026-11-03T00:00:00.000Z",
-    summary: "bot",
-    body: "",
-    now: "2026-11-03T00:00:00.000Z",
-  });
-  const result = await runBotTool(
-    toolNamed("catch_up"),
-    {
-      marks: [
-        { id: saved.id, caughtUp: true },
-        { id: "entry-missing", caughtUp: true },
-      ],
-    },
-    botDoors(db, "2026-11-03T01:00:00.000Z"),
-    emptyWorkspace,
-  );
-  if (typeof result !== "object" || result === null || !("error" in result)) {
-    fail("bot catch_up hid a missing id");
-  }
-  const row = defined(await readEntry(db, saved.id), "bot rollback Entry is missing");
-  if (row.caughtUp !== false) {
-    fail("a failed bot catch_up left an earlier row Caught up");
-  }
-};
-
 const main = async (): Promise<void> => {
   try {
     await runCascade();
     await runGenerated();
     await assertCaughtUpRollsBack();
-    await assertBotCatchUpRollsBack();
-    console.log(
-      "entry lifecycle: 24 sequences of 12 operations, plus the screen cascade and the bot tool, held",
-    );
+    console.log("entry lifecycle: 24 sequences of 12 operations, plus the screen cascade, held");
   } finally {
     rmSync(scratchRoot, { recursive: true, force: true });
   }

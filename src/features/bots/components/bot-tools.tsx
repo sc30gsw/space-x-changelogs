@@ -1,6 +1,7 @@
+import "../web-model-context";
 import "@mcp-b/global";
 import { useWebMCP } from "@mcp-b/react-webmcp";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   catchUp,
   ingestEntry,
@@ -26,7 +27,9 @@ const doors = {
 function BotTool({ spec }: { readonly spec: BotToolSpec }) {
   const workspace = useWorkspace();
   const workspaceRef = useRef(workspace);
-  workspaceRef.current = workspace;
+  useEffect(() => {
+    workspaceRef.current = workspace;
+  }, [workspace]);
 
   useWebMCP({
     name: spec.name,

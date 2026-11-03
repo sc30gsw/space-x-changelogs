@@ -1,4 +1,13 @@
-import { entryKinds, isEntryKind, type EntryKind } from "../../../utils/kinds";
+import * as v from "valibot";
+import {
+  catchUpSchema,
+  ingestEntrySchema,
+  memoSaveSchema,
+  removeIdsSchema,
+  sourceSaveSchema,
+  trackSaveSchema,
+} from "../../../types/writes";
+import { entryKinds } from "../../../utils/kinds";
 
 export const writeDoors = [
   "ingestEntry",
@@ -157,320 +166,23 @@ export const botToolSpecs: readonly BotToolSpec[] = [
 
 type Failure = { readonly error: string };
 
-type IngestToolInput = {
-  readonly id: string | undefined;
-  readonly trackId: string;
-  readonly kind: EntryKind;
-  readonly title: string;
-  readonly url: string;
-  readonly publishedAt: string;
-  readonly summary: string;
-  readonly body: string;
-};
+const listWorkspaceSchema = v.pipe(
+  v.custom<Record<string, unknown>>(
+    (input) => typeof input === "object" && input !== null && !Array.isArray(input),
+  ),
+  v.strictObject({}),
+);
+const marksInputSchema = v.pipe(
+  v.object({ marks: catchUpSchema }),
+  v.transform((row) => row.marks),
+);
+const idsInputSchema = v.pipe(
+  v.object({ ids: removeIdsSchema }),
+  v.transform((row) => row.ids),
+);
 
-type CatchUpToolInput = {
-  readonly marks: readonly { readonly id: string; readonly caughtUp: boolean }[];
-};
-
-type SaveTrackToolInput = {
-  readonly id: string | undefined;
-  readonly name: string;
-  readonly slug: string;
-};
-
-type SaveSourceToolInput = {
-  readonly id: string | undefined;
-  readonly trackId: string;
-  readonly label: string;
-  readonly url: string;
-};
-
-type SaveMemoToolInput = {
-  readonly id: string | undefined;
-  readonly entryId: string;
-  readonly body: string;
-};
-
-type RemoveToolInput = { readonly ids: readonly string[] };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const isString = (value: unknown): value is string => typeof value === "string";
-
-const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
-
-const isStringList = (value: unknown): value is readonly string[] =>
-  Array.isArray(value) && value.every(isString);
-
-const fail = (error: string): Failure => ({ error });
-
-const readObject = (
-  input: unknown,
-  fields: readonly string[],
-): { readonly record: Record<string, unknown> } | Failure => {
-  if (!isRecord(input)) {
-    return fail("Tool input must be an object.");
-  }
-  for (const key of Object.keys(input)) {
-    if (!fields.includes(key)) {
-      return fail(`${key} is not accepted.`);
-    }
-  }
-  return { record: input };
-};
-
-const requiredString = (
-  record: Record<string, unknown>,
-  key: string,
-): { readonly value: string } | Failure => {
-  if (!Object.hasOwn(record, key)) {
-    return fail(`${key} is required.`);
-  }
-  const value = record[key];
-  if (!isString(value)) {
-    return fail(`${key} must be a string.`);
-  }
-  return { value };
-};
-
-const optionalId = (
-  record: Record<string, unknown>,
-  key: string,
-): { readonly value: string | undefined } | Failure => {
-  if (!Object.hasOwn(record, key)) {
-    return { value: undefined };
-  }
-  const value = record[key];
-  if (!isString(value) || value.length < 1) {
-    return fail(`${key} must be a non-empty string.`);
-  }
-  return { value };
-};
-
-const optionalBody = (record: Record<string, unknown>): { readonly value: string } | Failure => {
-  if (!Object.hasOwn(record, "body")) {
-    return { value: "" };
-  }
-  const value = record.body;
-  if (!isString(value)) {
-    return fail("body must be a string.");
-  }
-  return { value };
-};
-
-const requiredKind = (record: Record<string, unknown>): { readonly value: EntryKind } | Failure => {
-  const read = requiredString(record, "kind");
-  if ("error" in read) {
-    return read;
-  }
-  if (!isEntryKind(read.value)) {
-    return fail("kind must be Release, X Post, Bot Template, or Pull Request.");
-  }
-  return { value: read.value };
-};
-
-const requiredIds = (
-  record: Record<string, unknown>,
-): { readonly value: readonly string[] } | Failure => {
-  if (!Object.hasOwn(record, "ids")) {
-    return fail("ids is required.");
-  }
-  const value = record.ids;
-  if (!isStringList(value)) {
-    return fail("ids must be an array of strings.");
-  }
-  return { value };
-};
-
-const requiredMarks = (record: Record<string, unknown>): CatchUpToolInput | Failure => {
-  if (!Object.hasOwn(record, "marks")) {
-    return fail("marks is required.");
-  }
-  const value = record.marks;
-  if (!Array.isArray(value)) {
-    return fail("marks must be an array.");
-  }
-  const marks: { readonly id: string; readonly caughtUp: boolean }[] = [];
-  for (const mark of value) {
-    if (!isRecord(mark)) {
-      return fail("Each mark must be an object.");
-    }
-    for (const key of Object.keys(mark)) {
-      if (key !== "id" && key !== "caughtUp") {
-        return fail(`${key} is not accepted on a mark.`);
-      }
-    }
-    if (!Object.hasOwn(mark, "id")) {
-      return fail("Each mark id is required.");
-    }
-    if (!isString(mark.id)) {
-      return fail("Each mark id must be a string.");
-    }
-    if (!Object.hasOwn(mark, "caughtUp")) {
-      return fail("Each mark caughtUp is required.");
-    }
-    if (!isBoolean(mark.caughtUp)) {
-      return fail("Each mark caughtUp must be a boolean.");
-    }
-    marks.push({ id: mark.id, caughtUp: mark.caughtUp });
-  }
-  return { marks };
-};
-
-const parseIngestEntry = (input: unknown): IngestToolInput | Failure => {
-  const fields = readObject(input, [
-    "id",
-    "trackId",
-    "kind",
-    "title",
-    "url",
-    "publishedAt",
-    "summary",
-    "body",
-  ]);
-  if ("error" in fields) {
-    return fields;
-  }
-  const id = optionalId(fields.record, "id");
-  if ("error" in id) {
-    return id;
-  }
-  const trackId = requiredString(fields.record, "trackId");
-  if ("error" in trackId) {
-    return trackId;
-  }
-  const kind = requiredKind(fields.record);
-  if ("error" in kind) {
-    return kind;
-  }
-  const title = requiredString(fields.record, "title");
-  if ("error" in title) {
-    return title;
-  }
-  const url = requiredString(fields.record, "url");
-  if ("error" in url) {
-    return url;
-  }
-  const publishedAt = requiredString(fields.record, "publishedAt");
-  if ("error" in publishedAt) {
-    return publishedAt;
-  }
-  const summary = requiredString(fields.record, "summary");
-  if ("error" in summary) {
-    return summary;
-  }
-  const body = optionalBody(fields.record);
-  if ("error" in body) {
-    return body;
-  }
-  return {
-    id: id.value,
-    trackId: trackId.value,
-    kind: kind.value,
-    title: title.value,
-    url: url.value,
-    publishedAt: publishedAt.value,
-    summary: summary.value,
-    body: body.value,
-  };
-};
-
-const parseCatchUp = (input: unknown): CatchUpToolInput | Failure => {
-  const fields = readObject(input, ["marks"]);
-  if ("error" in fields) {
-    return fields;
-  }
-  return requiredMarks(fields.record);
-};
-
-const parseSaveTrack = (input: unknown): SaveTrackToolInput | Failure => {
-  const fields = readObject(input, ["id", "name", "slug"]);
-  if ("error" in fields) {
-    return fields;
-  }
-  const id = optionalId(fields.record, "id");
-  if ("error" in id) {
-    return id;
-  }
-  const name = requiredString(fields.record, "name");
-  if ("error" in name) {
-    return name;
-  }
-  const slug = requiredString(fields.record, "slug");
-  if ("error" in slug) {
-    return slug;
-  }
-  return { id: id.value, name: name.value, slug: slug.value };
-};
-
-const parseSaveSource = (input: unknown): SaveSourceToolInput | Failure => {
-  const fields = readObject(input, ["id", "trackId", "label", "url"]);
-  if ("error" in fields) {
-    return fields;
-  }
-  const id = optionalId(fields.record, "id");
-  if ("error" in id) {
-    return id;
-  }
-  const trackId = requiredString(fields.record, "trackId");
-  if ("error" in trackId) {
-    return trackId;
-  }
-  const label = requiredString(fields.record, "label");
-  if ("error" in label) {
-    return label;
-  }
-  const url = requiredString(fields.record, "url");
-  if ("error" in url) {
-    return url;
-  }
-  return { id: id.value, trackId: trackId.value, label: label.value, url: url.value };
-};
-
-const parseSaveMemo = (input: unknown): SaveMemoToolInput | Failure => {
-  const fields = readObject(input, ["id", "entryId", "body"]);
-  if ("error" in fields) {
-    return fields;
-  }
-  const id = optionalId(fields.record, "id");
-  if ("error" in id) {
-    return id;
-  }
-  const entryId = requiredString(fields.record, "entryId");
-  if ("error" in entryId) {
-    return entryId;
-  }
-  const body = requiredString(fields.record, "body");
-  if ("error" in body) {
-    return body;
-  }
-  return { id: id.value, entryId: entryId.value, body: body.value };
-};
-
-const parseRemoveEntries = (input: unknown): RemoveToolInput | Failure => {
-  const fields = readObject(input, ["ids"]);
-  if ("error" in fields) {
-    return fields;
-  }
-  const ids = requiredIds(fields.record);
-  if ("error" in ids) {
-    return ids;
-  }
-  return { ids: ids.value };
-};
-
-const parseRemoveMemos = (input: unknown): RemoveToolInput | Failure => {
-  const fields = readObject(input, ["ids"]);
-  if ("error" in fields) {
-    return fields;
-  }
-  const ids = requiredIds(fields.record);
-  if ("error" in ids) {
-    return ids;
-  }
-  return { ids: ids.value };
-};
+const issueMessage = (issues: readonly { readonly message: string }[]): string =>
+  issues[0]?.message ?? "Tool input is invalid.";
 
 export type WorkspaceSnapshot = {
   readonly tracks: readonly unknown[];
@@ -482,36 +194,16 @@ export type WorkspaceSnapshot = {
 };
 
 export type BotDoors = {
-  readonly ingestEntry: (input: {
-    readonly id?: string;
-    readonly trackId: string;
-    readonly kind: EntryKind;
-    readonly title: string;
-    readonly url: string;
-    readonly publishedAt: string;
-    readonly summary: string;
-    readonly body: string;
-  }) => Promise<unknown>;
-  readonly catchUp: (marks: CatchUpToolInput["marks"]) => Promise<unknown>;
-  readonly saveTrack: (input: {
-    readonly id: string;
-    readonly name: string;
-    readonly slug: string;
-  }) => Promise<unknown>;
-  readonly saveSource: (input: {
-    readonly id: string;
-    readonly trackId: string;
-    readonly label: string;
-    readonly url: string;
-  }) => Promise<unknown>;
-  readonly saveMemo: (input: {
-    readonly id: string;
-    readonly entryId: string;
-    readonly body: string;
-  }) => Promise<unknown>;
-  readonly removeEntries: (ids: readonly string[]) => Promise<unknown>;
-  readonly removeMemos: (ids: readonly string[]) => Promise<unknown>;
+  readonly ingestEntry: (input: v.InferOutput<typeof ingestEntrySchema>) => Promise<unknown>;
+  readonly catchUp: (marks: v.InferOutput<typeof catchUpSchema>) => Promise<unknown>;
+  readonly saveTrack: (input: v.InferOutput<typeof trackSaveSchema>) => Promise<unknown>;
+  readonly saveSource: (input: v.InferOutput<typeof sourceSaveSchema>) => Promise<unknown>;
+  readonly saveMemo: (input: v.InferOutput<typeof memoSaveSchema>) => Promise<unknown>;
+  readonly removeEntries: (ids: v.InferOutput<typeof removeIdsSchema>) => Promise<unknown>;
+  readonly removeMemos: (ids: v.InferOutput<typeof removeIdsSchema>) => Promise<unknown>;
 };
+
+const fail = (error: string): Failure => ({ error });
 
 const runWrite = async <T>(write: () => Promise<T>): Promise<T | Failure> => {
   try {
@@ -533,6 +225,44 @@ const snapshotOf = (workspace: WorkspaceSnapshot) => ({
   isError: workspace.isError,
 });
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const withId = (input: unknown, createId: () => string): unknown => {
+  if (!isRecord(input) || Object.hasOwn(input, "id")) {
+    return input;
+  }
+  return { ...input, id: createId() };
+};
+
+type BoundWrite = {
+  readonly run: (input: unknown, doors: BotDoors, createId: () => string) => Promise<unknown>;
+};
+
+const bind = <T>(
+  schema: v.BaseSchema<unknown, T, v.BaseIssue<unknown>>,
+  call: (doors: BotDoors, value: T) => Promise<unknown>,
+  fillId = false,
+): BoundWrite => ({
+  run: async (input, doors, createId) => {
+    const parsed = v.safeParse(schema, fillId ? withId(input, createId) : input);
+    if (!parsed.success) {
+      return fail(issueMessage(parsed.issues));
+    }
+    return runWrite(() => call(doors, parsed.output));
+  },
+});
+
+const writes: Record<WriteDoor, BoundWrite> = {
+  ingestEntry: bind(ingestEntrySchema, (doors, value) => doors.ingestEntry(value)),
+  catchUp: bind(marksInputSchema, (doors, marks) => doors.catchUp(marks)),
+  saveTrack: bind(trackSaveSchema, (doors, value) => doors.saveTrack(value), true),
+  saveSource: bind(sourceSaveSchema, (doors, value) => doors.saveSource(value), true),
+  saveMemo: bind(memoSaveSchema, (doors, value) => doors.saveMemo(value), true),
+  removeEntries: bind(idsInputSchema, (doors, ids) => doors.removeEntries(ids)),
+  removeMemos: bind(idsInputSchema, (doors, ids) => doors.removeMemos(ids)),
+};
+
 export const runBotTool = async (
   spec: BotToolSpec,
   input: unknown,
@@ -541,95 +271,13 @@ export const runBotTool = async (
   createId: () => string = () => crypto.randomUUID(),
 ): Promise<unknown> => {
   if (spec.door === null) {
-    const parsed = readObject(input, []);
-    if ("error" in parsed) {
-      return parsed;
+    const parsed = v.safeParse(listWorkspaceSchema, input);
+    if (!parsed.success) {
+      return fail(issueMessage(parsed.issues));
     }
     return snapshotOf(workspace);
   }
 
-  switch (spec.door) {
-    case "ingestEntry": {
-      const parsed = parseIngestEntry(input);
-      if ("error" in parsed) {
-        return parsed;
-      }
-      const row = {
-        ...(parsed.id === undefined ? {} : { id: parsed.id }),
-        trackId: parsed.trackId,
-        kind: parsed.kind,
-        title: parsed.title,
-        url: parsed.url,
-        publishedAt: parsed.publishedAt,
-        summary: parsed.summary,
-        body: parsed.body,
-      };
-      return runWrite(() => doors.ingestEntry(row));
-    }
-    case "catchUp": {
-      const parsed = parseCatchUp(input);
-      if ("error" in parsed) {
-        return parsed;
-      }
-      return runWrite(() => doors.catchUp(parsed.marks));
-    }
-    case "saveTrack": {
-      const parsed = parseSaveTrack(input);
-      if ("error" in parsed) {
-        return parsed;
-      }
-      return runWrite(() =>
-        doors.saveTrack({
-          id: parsed.id ?? createId(),
-          name: parsed.name,
-          slug: parsed.slug,
-        }),
-      );
-    }
-    case "saveSource": {
-      const parsed = parseSaveSource(input);
-      if ("error" in parsed) {
-        return parsed;
-      }
-      return runWrite(() =>
-        doors.saveSource({
-          id: parsed.id ?? createId(),
-          trackId: parsed.trackId,
-          label: parsed.label,
-          url: parsed.url,
-        }),
-      );
-    }
-    case "saveMemo": {
-      const parsed = parseSaveMemo(input);
-      if ("error" in parsed) {
-        return parsed;
-      }
-      return runWrite(() =>
-        doors.saveMemo({
-          id: parsed.id ?? createId(),
-          entryId: parsed.entryId,
-          body: parsed.body,
-        }),
-      );
-    }
-    case "removeEntries": {
-      const parsed = parseRemoveEntries(input);
-      if ("error" in parsed) {
-        return parsed;
-      }
-      return runWrite(() => doors.removeEntries(parsed.ids));
-    }
-    case "removeMemos": {
-      const parsed = parseRemoveMemos(input);
-      if ("error" in parsed) {
-        return parsed;
-      }
-      return runWrite(() => doors.removeMemos(parsed.ids));
-    }
-    default: {
-      const unreachable: never = spec.door;
-      return fail(`Unknown write door. Expected ${writeDoors.join(", ")}. ${String(unreachable)}`);
-    }
-  }
+  const write = writes[spec.door];
+  return write.run(input, doors, createId);
 };

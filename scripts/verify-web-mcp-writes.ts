@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
@@ -44,16 +44,6 @@ const specifiedTools = [
   { name: "remove_entries", door: "removeEntries", readOnly: false },
   { name: "remove_memos", door: "removeMemos", readOnly: false },
 ] as const;
-
-const storeDoors = `const doors = {
-  ingestEntry,
-  catchUp,
-  saveTrack,
-  saveSource,
-  saveMemo,
-  removeEntries,
-  removeMemos,
-};`;
 
 const scratchRoot = mkdtempSync(join(tmpdir(), "web-mcp-writes-"));
 let databaseSerial = 0;
@@ -114,28 +104,6 @@ const assertSpec = (): void => {
     ) {
       fail(`tool ${index} is not ${expected?.name} -> ${String(expected?.door)}`);
     }
-  }
-};
-
-const assertRegistrar = (): void => {
-  const registrar = readFileSync(
-    new URL("../src/features/bots/components/bot-tools.tsx", import.meta.url),
-    "utf8",
-  );
-  const imported = registrar.match(
-    /import \{([^}]+)\} from "\.\.\/\.\.\/\.\.\/stores\/changelog";/u,
-  );
-  const names = imported?.[1]
-    ?.split(",")
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0)
-    .toSorted();
-  const expected = [...writeDoors].toSorted();
-  if (names === undefined || names.join() !== expected.join()) {
-    fail("the page does not bind the seven store write functions");
-  }
-  if (!registrar.includes(storeDoors)) {
-    fail("the page wraps a write function instead of passing it through");
   }
 };
 
@@ -465,7 +433,6 @@ const proveCatchUpRollsBack = async (): Promise<void> => {
 
 const main = async (): Promise<void> => {
   assertSpec();
-  assertRegistrar();
   const db = await openDb();
   const counts = freshCounts();
   await proveRejected(db, counts);

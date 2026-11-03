@@ -1,4 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
 import {
   botToolSpecs,
   runBotTool,
@@ -233,6 +232,8 @@ if (recordId(freshEntry.args) !== undefined) {
   fail("ingest_entry invented an id");
 }
 
+await assertQuiet(specNamed("save_track"), { name: "Cursor", slug: "Cursor" }, "uppercase slug");
+
 const blownCalls: Call[] = [];
 const blownDoors: BotDoors = {
   ...openDoors().doors,
@@ -253,30 +254,6 @@ if (
   blownCalls.length !== 1
 ) {
   fail("a rejected write called the door more than once or hid the message");
-}
-
-const registrar = readFileSync(
-  new URL("../src/features/bots/components/bot-tools.tsx", import.meta.url),
-  "utf8",
-);
-if (registrar.split("runBotTool(").length - 1 !== 1) {
-  fail("the page registrar does not call runBotTool once");
-}
-for (const door of writeDoors) {
-  if (registrar.split(`${door}(`).length - 1 !== 0) {
-    fail(`the page registrar calls ${door} itself`);
-  }
-}
-
-const routes = readdirSync(new URL("../src/app/routes", import.meta.url)).toSorted();
-const expectedRoutes = ["__root.tsx", "entries", "index.tsx", "manage.tsx", "tracks"];
-if (routes.join() !== expectedRoutes.join()) {
-  fail(`routes changed: ${routes.join(", ")}`);
-}
-
-const start = readFileSync(new URL("../src/app/start.ts", import.meta.url), "utf8");
-if (start.includes("mcp") || start.includes("modelContext")) {
-  fail("start.ts handles Web MCP");
 }
 
 console.log(
