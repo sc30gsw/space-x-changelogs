@@ -6,6 +6,7 @@ import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-r
 import type { ReactNode } from "react";
 import { Frame } from "../../components/frame";
 import { theme } from "../../config/theme";
+import { BotTools } from "../../features/bots/components/bot-tools";
 import { DataProvider } from "../provider";
 import { WorkspaceProvider } from "../../stores/workspace";
 import "../../styles/stylex.css";
@@ -38,6 +39,7 @@ function RootLayout() {
   return (
     <Frame>
       <Outlet />
+      <BotTools />
     </Frame>
   );
 }

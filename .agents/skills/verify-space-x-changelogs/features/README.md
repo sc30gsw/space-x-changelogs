@@ -12,3 +12,4 @@ What a person can operate on the SpaceX changelogs screen. There is no cross-tra
 | [Track and Source management](manage.md) | `/manage` | `tests/manage.e2e.ts` | tested |
 | [Spotlight](spotlight.md) | any screen, then `/entries/$entryId` | `tests/spotlight.e2e.ts` | tested |
 | [Basic auth](basic-auth.md) | every page | `tests/basic-auth.e2e.ts` | tested |
+| [Web MCP](web-mcp.md) | every page, `document.modelContext` | `pnpm verify:web-mcp` | tested |
