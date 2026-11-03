@@ -80,7 +80,7 @@ const registrarFailures = (projectRoot: string): string[] => {
   if (bound === undefined || bound.join() !== expected.join()) {
     return ["src/features/bots/components/bot-tools.tsx does not pass the seven store writes"];
   }
-  const optionsAt = text.indexOf('import "../web-model-context"');
+  const optionsAt = text.indexOf('import "../utils/web-model-context"');
   const globalAt = text.indexOf('import "@mcp-b/global"');
   if (optionsAt === -1 || globalAt === -1 || optionsAt > globalAt) {
     return ["src/features/bots/components/bot-tools.tsx loads @mcp-b/global before its options"];

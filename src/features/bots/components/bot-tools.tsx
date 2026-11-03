@@ -1,4 +1,4 @@
-import "../web-model-context";
+import "../utils/web-model-context";
 import "@mcp-b/global";
 import { useWebMCP } from "@mcp-b/react-webmcp";
 import { useEffect, useRef } from "react";
