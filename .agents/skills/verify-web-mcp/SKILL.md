@@ -26,14 +26,14 @@ web mcp writes: 8 tools, 7 write functions, one call each, stored rows held
 
 ## Coverage
 
-Sync commit: `1a5e0f749a6345d07a12793b066d98d418ba56e8`
+Sync commit: `db514ae12cdc811f2ed452c79f7a46aba6957718`
 
 このコミットで、チェックが次の実装をそのまま呼んでいることを確認した。対象ファイルがこのコミットより後に変わっていたら、先に `pnpm verify:web-mcp` を実行し、チェックがまだその実装を説明していると確認してから sync commit を進める。ずれを戻すときは `/maintain-formal-verification-skill` を使う。
 
 | ファイル | 関数 |
 | --- | --- |
 | `src/types/writes.ts` | `ingestEntrySchema`, `catchUpSchema`, `trackSaveSchema`, `sourceSaveSchema`, `memoSaveSchema`, `removeIdsSchema` |
-| `src/features/bots/web-model-context.ts` | `window.__webModelContextOptions` |
+| `src/features/bots/utils/web-model-context.ts` | `window.__webModelContextOptions` |
 | `src/features/bots/utils/bot-tools.ts` | `botToolSpecs`, `runBotTool` |
 | `src/features/bots/components/bot-tools.tsx` | `BotTools`, `BotTool`, `doors` |
 | `src/lib/db/write.ts` | `ingestEntryEffect`, `catchUpEffect`, `saveTrackEffect`, `saveSourceEffect`, `saveMemoEffect`, `removeEntriesEffect`, `removeMemosEffect` |
@@ -42,7 +42,7 @@ Sync commit: `1a5e0f749a6345d07a12793b066d98d418ba56e8`
 | `scripts/verify-web-mcp.ts` | 拒否入力、1 回の扉、生成 id、既存 id、省略した ingest id、大文字 slug |
 | `scripts/verify-web-mcp-writes.ts` | 8 ツールの仕様表、7 Effect の保存結果 |
 
-`bot-tools.tsx` の `doors` は、上の 7 つの store 関数を別名なしで渡す。その名前と、`import "../web-model-context"` が `import "@mcp-b/global"` より前であることは `pnpm check:fence` が 1 回見る。`runBotTool` は `door` が `null` のとき `list_workspace` の空オブジェクトを parse し、読み取り結果だけを返す。書き込みは `writes` の 1 行が、`src/types/writes.ts` の schema を parse してから対応する Effect を 1 回呼ぶ。`catch_up` と削除は `{ marks }` と `{ ids }` を外してから、サーバと同じ配列 schema を通す。`saveTrack`、`saveSource`、`saveMemo` は、入力が id を持たないオブジェクトのときだけ `createId` を足してから schema を通す。`ingest_entry` は省略した id を作らない。`catchUpEffect` は `commitCatchUp` を 1 つのトランザクションで呼ぶ。無い id があると `RecordNotFound` でそのトランザクションが戻る。`saveMemoEffect` は `sanitizeMemo` を通した本文を書く。
+`bot-tools.tsx` の `doors` は、上の 7 つの store 関数を別名なしで渡す。その名前と、`import "../utils/web-model-context"` が `import "@mcp-b/global"` より前であることは `pnpm check:fence` が 1 回見る。`runBotTool` は `door` が `null` のとき `list_workspace` の空オブジェクトを parse し、読み取り結果だけを返す。書き込みは `writes` の 1 行が、`src/types/writes.ts` の schema を parse してから対応する Effect を 1 回呼ぶ。`catch_up` と削除は `{ marks }` と `{ ids }` を外してから、サーバと同じ配列 schema を通す。`saveTrack`、`saveSource`、`saveMemo` は、入力が id を持たないオブジェクトのときだけ `createId` を足してから schema を通す。`ingest_entry` は省略した id を作らない。`catchUpEffect` は `commitCatchUp` を 1 つのトランザクションで呼ぶ。無い id があると `RecordNotFound` でそのトランザクションが戻る。`saveMemoEffect` は `sanitizeMemo` を通した本文を書く。
 
 ## Bounds
 
