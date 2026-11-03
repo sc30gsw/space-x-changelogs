@@ -19,7 +19,7 @@
     "test:e2e": "e2e run",
     "verify:ingest": "tsx scripts/verify-entry-url-identity.ts",
     "verify:lifecycle": "tsx scripts/verify-entry-lifecycle.ts",
-    "verify:web-mcp": "tsx scripts/verify-web-mcp.ts",
+    "verify:web-mcp": "tsx scripts/verify-web-mcp.ts && tsx scripts/verify-web-mcp-writes.ts",
     "check:layout": "tsx scripts/check-bulletproof-layout.ts",
     "check:fence": "tsx scripts/check-import-fence.ts",
     "doctor": "npx react-doctor@latest",

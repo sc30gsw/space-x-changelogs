@@ -16,7 +16,7 @@ Any page after the client bundle loads, including `/tracks/cursor`. There is no 
 
 ## Driving it with e2e
 
-No screen test. `pnpm verify:web-mcp` checks `runBotTool`. `pnpm verify:lifecycle` checks one bot `catch_up` against `commitCatchUp`. `pnpm verify:ingest` checks one bot overwrite against `commitIngest`. Live walk: open `/tracks/cursor`, wait until the heading `Cursor` is visible, then in the page:
+No screen test. `pnpm verify:web-mcp` checks `runBotTool` and runs each of the eight tools against the seven write effects. `pnpm verify:lifecycle` checks generated Caught up and delete sequences, including one bot `catch_up`. `pnpm verify:ingest` checks generated URL overwrites, including one bot `ingest_entry`. Live walk: open `/tracks/cursor`, wait until the heading `Cursor` is visible, then in the page:
 
 ```js
 const tools = await document.modelContext.getTools();

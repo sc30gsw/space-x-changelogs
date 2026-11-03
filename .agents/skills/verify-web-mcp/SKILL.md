@@ -1,13 +1,13 @@
 ---
 name: verify-web-mcp
-description: Check that each Web MCP tool calls one changelog write door, and that a bad input calls none. Use when changing runBotTool, botToolSpecs, BotTools, or scripts/verify-web-mcp.ts.
+description: Check that each Web MCP tool calls one of the seven changelog write functions, and that the stored rows match that function. Use when changing runBotTool, botToolSpecs, BotTools, the write effects, or scripts/verify-web-mcp.ts.
 ---
 
-# Web MCP の書き込み口
+# Web MCP の 8 ツールと 7 つの書き込み
 
-ページに載る Web MCP ツールは、画面と同じ 7 つの書き込み関数を 1 回だけ呼ぶ。壊れた入力はどの関数も呼ばない。`catch_up` は印の配列を 1 回の `catchUp` に渡す。`list_workspace` は読み込み済みの行を返し、何も書かない。ここが壊れると、ボットが画面と別の書き込み口を通り、無い id の Caught up が途中の行だけを Caught up にし、拒否した入力が行を変える。
+ページの `document.modelContext` に載るツールは 8 個である。`list_workspace` は読み込み済みの行を返し、何も書かない。残りの 7 個は、画面と同じ書き込み関数を 1 回だけ呼ぶ。`catch_up` は印の配列を 1 回の `catchUp` に渡し、無い id があると先の行も Caught up にしない。`ingest_entry` は同じ URL の id と Caught up を残す。`save_memo` は script を保存しない。`remove_memos` は Memo だけを消し、`remove_entries` はその Entry とそれについていた Memo だけを消す。ここが壊れると、ボットが別の書き込みを通り、無い id の Caught up が途中の行だけを Caught up にし、消したつもりのない行が消える。
 
-TypeScript を対象にした検証器はリポジトリにない。このチェックは `runBotTool` そのものを、扉の代わりに呼び出しを数える関数へ、決まった入力で実行する。画面の見出しと `document.modelContext` への登録はブラウザで見る。原文 URL と Caught up の巻き戻しは `verify-entry-url-identity` と `verify-entry-lifecycle` が、本物の `commitIngest` と `commitCatchUp` に対して見る。これは TLA+ のモデルではない。`/statechart` は使わない。
+TypeScript を対象にした検証器はリポジトリにない。書き込みの順番を別の TLA+ モデルにすると、`commitCatchUp` が無い id を無視して先の行を保存しても、そのモデルは成功したままになる。このチェックは `runBotTool` そのものを実行する。扉は `ingestEntryEffect`、`catchUpEffect`、`saveTrackEffect`、`saveSourceEffect`、`saveMemoEffect`、`removeEntriesEffect`、`removeMemosEffect` で、libsql のファイル DB に書く。ページは同じ名前の store 関数を渡す。store 関数はブラウザのコレクションとサーバ関数を通るので、ここではサーバ関数の handler が呼ぶ Effect を直接渡す。`/statechart` は使わない。
 
 ## Run
 
@@ -15,7 +15,14 @@ TypeScript を対象にした検証器はリポジトリにない。このチェ
 pnpm verify:web-mcp
 ```
 
-成功すると `web mcp: 8 tools, 4 rejected inputs each, one door per write, held` と出て、終了コードは 0 である。失敗は標準エラーの 1 行で、終了コードは 1 である。依存はリポジトリの `tsx` だけである。
+成功すると次の 2 行が出て、終了コードは 0 である。
+
+```text
+web mcp: 8 tools, 4 rejected inputs each, one door per write, held
+web mcp writes: 8 tools, 7 write functions, one call each, stored rows held
+```
+
+失敗は標準エラーの 1 行で、終了コードは 1 である。依存はリポジトリの `tsx`、`effect`、`drizzle-orm`、`@libsql/client` である。
 
 ## Coverage
 
@@ -26,31 +33,42 @@ Sync commit: `c394877802edff07fd204839e996a352e731ffba`
 | ファイル | 関数 |
 | --- | --- |
 | `src/features/bots/utils/bot-tools.ts` | `botToolSpecs`, `runBotTool` |
-| `src/features/bots/components/bot-tools.tsx` | `BotTools`, `BotTool` |
-| `scripts/verify-web-mcp.ts` | 拒否入力、1 回の扉、登録ファイルと経路の確認 |
+| `src/features/bots/components/bot-tools.tsx` | `BotTools`, `BotTool`, `doors` |
+| `src/lib/db/write.ts` | `ingestEntryEffect`, `catchUpEffect`, `saveTrackEffect`, `saveSourceEffect`, `saveMemoEffect`, `removeEntriesEffect`, `removeMemosEffect` |
+| `src/stores/changelog.ts` | `ingestEntry`, `catchUp`, `saveTrack`, `saveSource`, `saveMemo`, `removeEntries`, `removeMemos` |
+| `scripts/verify-web-mcp.ts` | 拒否入力、1 回の扉、登録ファイルと経路 |
+| `scripts/verify-web-mcp-writes.ts` | 8 ツールの仕様表、store 関数の受け渡し、7 Effect の保存結果 |
 
-`runBotTool` は `door` が `null` のとき読み取り結果だけを返す。書き込みは `switch` の 1 枝が、対応する扉を 1 回呼ぶ。`ingest_entry` は id が無いとき id を作らない。`save_track`、`save_source`、`save_memo` は id が無いとき渡された `createId` を 1 回使う。`BotTools` は `botToolSpecs` を `useWebMCP` に渡し、`execute` は `runBotTool` だけを呼ぶ。
+`bot-tools.tsx` の `doors` は、上の 7 つの store 関数を別名なしで渡す。`runBotTool` は `door` が `null` のとき読み取り結果だけを返す。書き込みは `switch` の 1 枝が、対応する Effect を 1 回呼ぶ。`catchUpEffect` は `commitCatchUp` を 1 つのトランザクションで呼ぶ。無い id があると `RecordNotFound` でそのトランザクションが戻る。`saveMemoEffect` は `sanitizeMemo` を通した本文を書く。
 
 ## Bounds
 
-- ツールは 8 個。名前は一意。読み取りは `list_workspace` だけ。
-- 書き込みの扉は `ingestEntry`、`catchUp`、`saveTrack`、`saveSource`、`saveMemo`、`removeEntries`、`removeMemos`。各扉はツール 1 個で、`readOnly` は false。
-- 拒否する形は `null`、`[]`、`"no"`、`{ extra: true }`。各書き込みは、必須項目を 1 つ消したオブジェクトも拒否する。
-- 妥当な入力はツールごとに 1 つ。`catch_up` の印は 2 件で、呼び出し引数の長さは 2。
-- `save_track` が id を省略すると、渡した `createId` の `generated-id` を 1 回使う。id を渡すとその文字列を残す。
-- `ingest_entry` が id を省略すると、扉へ渡すオブジェクトに id は無い。
-- 扉が `UNIQUE constraint failed` を投げると、呼び出しは 1 回で、戻り値の `error` はその文である。
-- `bot-tools.tsx` の `runBotTool(` は 1 箇所。扉名に `(` を付けた呼び出しは 0。
-- `src/app/routes` は `__root.tsx`、`entries`、`index.tsx`、`manage.tsx`、`tracks`。`src/app/start.ts` に `mcp` と `modelContext` は無い。
+仕様表の順は `list_workspace`、`ingest_entry`、`catch_up`、`save_track`、`save_source`、`save_memo`、`remove_entries`、`remove_memos`。読み取りは最初の 1 個だけ。書き込みの扉は `writeDoors` の 7 個で、各扉はツール 1 個。
 
-これはこの入力の集合で、`runBotTool` の戻り値と扉の呼び出し回数が一致することである。すべての文字列ではない。ブラウザの登録タイミングでもない。
+`scripts/verify-web-mcp.ts` は扉の代わりに回数を数える。拒否する形は `null`、`[]`、`"no"`、`{ extra: true }` と、必須項目を 1 つ消したオブジェクト。妥当な入力はツールごとに 1 つ。`catch_up` の印は 2 件で、引数の長さは 2。
+
+`scripts/verify-web-mcp-writes.ts` は同じ `runBotTool` を、上の 7 Effect に対して 1 回ずつ実行する。
+
+- 各ツールに `null` を渡すと、呼び出しは 0 で、行は変わらない。
+- `save_track` は同じ id の 2 回目で名前を変え、行は 1 件のまま。
+- `save_source` は Track の最初の Source を position 0 で作り、2 回目は position を残して label を変える。
+- `ingest_entry` は本文を空にした Unread を 1 件作る。同じ URL の再送は id と Caught up を残し、title を変える。
+- `catch_up` は存在する id の `caughtUp` を true にし、title は残す。存在する id と無い id を同じ配列で渡すと、戻り値は `error`、呼び出しは 1 回、先の行は Unread のまま。
+- `save_memo` の `<script>alert(1)</script><p>ok</p>` は `<p>ok</p>` として 1 件保存する。
+- `remove_memos` はその Memo を消し、Entry は残す。
+- `remove_entries` はその Entry を消し、別の Entry とその Memo は残す。
+- `list_workspace` は渡したスナップショットを返し、行を変えない。
+
+これはこの入力の集合である。すべての文字列、サーバ関数の valibot、ブラウザの楽観更新、同時の 2 ツール、ではない。生成列の Caught up と URL は `verify-entry-lifecycle` と `verify-entry-url-identity` が見る。
 
 ## 壊し方
 
-`catch_up` の `doors.catchUp(parsed.marks)` を、印ごとに `doors.catchUp([mark])` するループに変える。`pnpm verify:web-mcp` は `catch_up valid input did not call catchUp once` で失敗する。同じ変更で `pnpm verify:lifecycle` は `a failed bot catch_up left an earlier row Caught up` で失敗する。
+`catch_up` の `doors.catchUp(parsed.marks)` を、印ごとに `doors.catchUp([mark])` するループに変える。`pnpm verify:web-mcp` は `catch_up valid input did not call catchUp once` で失敗する。writes だけを実行すると `catch_up with a missing id called catchUp 2 times` で失敗する。
 
-元に戻して、両方のコマンドが成功することを確認する。失敗しなかったら、チェックが 1 回の `catchUp` を見ていない。プロパティを弱めて通さない。
+元に戻す。次に `commitCatchUp` から、無い id の `RecordNotFound` を外し、見つかった行だけを返す。`pnpm verify:web-mcp` は `a failed catch_up left an earlier row Caught up` で失敗する。回数だけの前半は、この変更では成功したままになる。
+
+どちらも元に戻して、コマンドが成功することを確認する。失敗しなかったら、チェックがそのプロパティを見ていない。プロパティを弱めて通さない。
 
 ## 見ていないもの
 
-ブラウザ、`useWebMCP` の再登録、Basic auth、HTTP、本物の Turso、画面の見出し。`ingest_entry` が同じ URL の id と Caught up を残すことは `verify-entry-url-identity` が見る。
+ブラウザ、`useWebMCP` の再登録、Basic auth、HTTP、本物の Turso、画面の見出し、store 関数の楽観更新、サーバ関数の slug と URL の valibot。`src/app/start.ts` に MCP は無い。
