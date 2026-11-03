@@ -16,7 +16,7 @@ Any page after the client bundle loads, including `/tracks/cursor`. There is no 
 
 ## Driving it with e2e
 
-No screen test. `pnpm verify:web-mcp` checks `runBotTool` and runs each of the eight tools against the seven write effects. `pnpm verify:lifecycle` checks generated Caught up and delete sequences, including one bot `catch_up`. `pnpm verify:ingest` checks generated URL overwrites, including one bot `ingest_entry`. Live walk: open `/tracks/cursor`, wait until the heading `Cursor` is visible, then in the page:
+No screen test. `pnpm verify:web-mcp` checks `runBotTool` and runs each of the eight tools against the seven write effects. `pnpm check:fence` checks that the page passes the seven store functions and loads the Web MCP options before `@mcp-b/global`. `pnpm verify:lifecycle` checks generated Caught up and delete sequences. `pnpm verify:ingest` checks generated URL overwrites. Live walk: open `/tracks/cursor`, wait until the heading `Cursor` is visible, then in the page:
 
 ```js
 const tools = await document.modelContext.getTools();
@@ -26,7 +26,7 @@ await document.modelContext.executeTool(listed, {});
 await document.modelContext.executeTool(ingest, {});
 ```
 
-Expect eight names. In Chrome 156, `executeTool` returns a JSON string. Parse it and read `structuredContent`. The list result has `tracks`, `sources`, `entries`, `memos`, `isLoading`, and `isError`. The empty ingest result has `error` `trackId is required.`. The heading stays `Cursor`, and the Entry count stays 0.
+Expect eight names. In Chrome 156, `executeTool` returns a JSON string. Parse it and read `structuredContent`. The list result has `tracks`, `sources`, `entries`, `memos`, `isLoading`, and `isError`. The empty ingest result has `error` `Invalid key: Expected "trackId" but received undefined`. The heading stays `Cursor`, and the Entry count stays 0.
 
 ## Proof
 
@@ -43,4 +43,4 @@ web-mcp|web|skeptic|Starting at /tracks/cursor, confirm the Cursor heading is un
 - `document.modelContext` comes from `@mcp-b/global` after the client module loads. The first HTML response does not list the tools.
 - `src/app/start.ts` does not handle MCP. A request to `/mcp` is not this feature.
 - The registrar renders nothing. A missing heading is the track screen, not a missing tool.
-- In Chrome 156, `executeTool` returns a JSON string. `structuredContent` is inside that string. `{ error: "trackId is required." }` is that field.
+- In Chrome 156, `executeTool` returns a JSON string. `structuredContent` is inside that string. `{ error: "Invalid key: Expected \"trackId\" but received undefined" }` is that field.
