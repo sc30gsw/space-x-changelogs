@@ -1,13 +1,13 @@
 ---
 name: verify-entry-lifecycle
-description: Check that one 原文 URL stays one Entry, Caught up writes only Caught up, and deleteEntries removes that Entry and its Memos. Use when changing submitEntry, setCaughtUp, insertMemo, deleteEntries, or scripts/verify-entry-lifecycle.ts.
+description: Check that one 原文 URL stays one Entry, Caught up writes only Caught up, and deleteEntries removes that Entry and its Memos. Use when changing commitIngest, commitCatchUp, commitMemo, commitRemoveEntries, or scripts/verify-entry-lifecycle.ts.
 ---
 
 # Entry のライフサイクル
 
-同じ原文 URL は Entry を 1 件だけ指す。上書きはその id、Caught up、Memo を残し、最初の Ingest は Unread である。Caught up の更新は `caughtUp` と `updatedAt` だけを変える。Entry の削除は、その Entry とそれについていた Memo だけを消し、他の Entry と Memo を残す。ここが壊れると、再送が別の Entry を作り、Caught up が Unread に戻り、削除した Entry の Memo が検索に残り、残すつもりの Memo が消える。
+同じ原文 URL は Entry を 1 件だけ指す。上書きはその id、Caught up、Memo を残し、最初の Ingest は Unread である。Caught up の更新は `caughtUp` と `updatedAt` だけを変える。Entry の削除は、その Entry とそれについていた Memo だけを消し、他の Entry と Memo を残す。ここが壊れると、再送が別の Entry を作り、Caught up が Unread に戻り、削除した Entry の Memo が検索に残り、残すつもりの Memo が消える。ボットの `catch_up` が印を分けたり、無い id で先の行だけを Caught up にしたりすることは `pnpm verify:web-mcp` が見る。
 
-TypeScript を対象にした検証器はリポジトリにない。このチェックは `submitEntry`、`setCaughtUp`、`insertMemo`、`deleteEntries` そのものを libsql のファイル DB に対して、画面の操作順と生成入力で実行する。画面そのものは `pnpm exec e2e` と `verify-space-x-changelogs` が見る。原文 URL の同時 Ingest の長い生成列は `verify-entry-url-identity` が見る。このチェックはその性質に、Caught up の列の固定と削除の範囲を足す。
+TypeScript を対象にした検証器はリポジトリにない。このチェックは `commitIngest`、`commitCatchUp`、`commitMemo`、`commitRemoveEntries` そのものを libsql のファイル DB に対して、画面の操作順と生成入力で実行する。画面そのものは `pnpm exec e2e` と `verify-space-x-changelogs` が見る。原文 URL の同時 Ingest の長い生成列は `verify-entry-url-identity` が見る。このチェックはその性質に、Caught up の列の固定と削除の範囲を足す。
 
 ## Run
 
@@ -19,16 +19,16 @@ pnpm verify:lifecycle
 
 ## Coverage
 
-Sync commit: `19e491454838a7a40bdc434328b9e1ebc4d20a03`
+Sync commit: `1a5e0f749a6345d07a12793b066d98d418ba56e8`
 
 このコミットで、チェックが次の実装をそのまま呼んでいることを確認した。対象ファイルがこのコミットより後に変わっていたら、先に `pnpm verify:lifecycle` を実行し、チェックがまだその実装を説明していると確認してから sync commit を進める。ずれを戻すときは `/maintain-formal-verification-skill` を使う。
 
 | ファイル | 関数 |
 | --- | --- |
-| `src/lib/submit-entry.ts` | `submitEntry`, `submitInTx`, `overwrite`, `insertUnread`, `withWrite`, `setCaughtUp`, `insertMemo`, `deleteEntries` |
+| `src/lib/db/write.ts` | `commitIngest`, `ingestInTx`, `overwrite`, `insertUnread`, `withWrite`, `commitCatchUp`, `commitMemo`, `commitRemoveEntries` |
 | `scripts/verify-entry-lifecycle.ts` | 画面の操作順、同じ URL への同時上書き、24 列の生成 |
 
-`overwrite` の `update` は `contentOf` だけを書く。`caughtUp` はそこには無い。`setCaughtUp` は渡した id 全部の `caughtUp` と `updatedAt` だけを、1 つのトランザクションで書く。その中に無い id があると全部戻る。`deleteEntries` は対象 id の Memo を消してから、その Entry を消す。空の id 配列は何もしない。
+スクリプトは `commitIngest` を `ingestEntry`、`commitMemo` を `saveMemo`、`commitRemoveEntries` を `removeEntries` という名前で呼ぶ。`overwrite` の `update` は `contentOf` だけを書く。`caughtUp` はそこには無い。`commitCatchUp` は渡した id 全部の `caughtUp` と `updatedAt` だけを、1 つのトランザクションで書く。その中に無い id があると全部戻る。`commitRemoveEntries` は対象 id の Memo を消してから、その Entry を消す。空の id 配列は何もしない。
 
 画面順の前に、Cursor の Source を 1 件入れ、Drizzle の関係型 `TrackWithSources`、`SourceWithTrack`、`EntryWithMemos`、`MemoWithEntry` で読み戻す。行の型は `tracks`、`sources`、`entries`、`memos` の `$inferSelect` である。
 
@@ -39,20 +39,20 @@ Sync commit: `19e491454838a7a40bdc434328b9e1ebc4d20a03`
 - その前の画面順は、Unread のままの読み直し、Caught up、Memo、同じ URL の上書き、残す Entry への Memo、同じ URL への同時上書き、対象 Entry の削除、空の削除。
 - DB は `file:` の sqlite。外部キーは ON。これはアプリの `prepare` と同じである。
 - 同時上書きは 1 プロセスの `withWrite` の中で順番に終わる。すべてのインターリーブではない。
-- 生成列の後に、存在する id と存在しない id を 1 回の `setCaughtUp` に渡す。無い id で失敗し、存在する行は Unread のままである。
+- 生成列の後に、存在する id と存在しない id を 1 回の `commitCatchUp` に渡す。無い id で失敗し、存在する行は Unread のままである。
 
 これはこの範囲の生成入力で、関数の戻り値と読み直した行がモデルと一致することである。すべての長さの列ではない。
 
 ## 壊し方
 
-`setCaughtUp` の `.set` に `title: "scratch"` を足す。`pnpm verify:lifecycle` は `setCaughtUp of … changed title` で失敗する。id ごとに別トランザクションへ戻すと、無い id の前に書いた行が残り、`a failed Caught up left an earlier row Caught up` で失敗する。
+`commitCatchUp` の `.set({ caughtUp, updatedAt: now })` に `title: "scratch"` を足す。`pnpm verify:lifecycle` は `setCaughtUp of … changed title` で失敗する。id ごとに別トランザクションへ戻すと、無い id の前に書いた行が残り、`a failed Caught up left an earlier row Caught up` で失敗する。
 
 `overwrite` の `.set(contentOf(input))` を `.set({ ...contentOf(input), caughtUp: false })` に変える。失敗は `overwrite of https://example.test/a moved id or Caught up` である。
 
-`deleteEntries` のトランザクション本体を空にする。失敗は `deleted Entry … is still present` である。Memo の削除条件を外して全 Memo を消すと、`delete removed Memo of an Entry that was kept` で失敗する。トランザクションの前に `PRAGMA foreign_keys = OFF` を実行し、Memo の削除を省くと、`deleted Entry … left Memo memo-target` で失敗する。外部キーが ON のまま Memo の明示削除だけを省いても、`ON DELETE CASCADE` が Memo を消すので、このチェックは成功したままである。その成功は、削除後に Memo 行が残っていないことであり、明示削除の行がまだあることではない。
+`commitRemoveEntries` のトランザクション本体を空にする。失敗は `deleted Entry … is still present` である。Memo の削除条件を外して全 Memo を消すと、`delete removed Memo of an Entry that was kept` で失敗する。トランザクションの前に `PRAGMA foreign_keys = OFF` を実行し、Memo の削除を省くと、`deleted Entry … left Memo memo-target` で失敗する。外部キーが ON のまま Memo の明示削除だけを省いても、`ON DELETE CASCADE` が Memo を消すので、このチェックは成功したままである。その成功は、削除後に Memo 行が残っていないことであり、明示削除の行がまだあることではない。
 
-いずれの変更も元に戻して、同じコマンドが成功することを確認する。失敗しなかったら、チェックがその性質を見ていない。プロパティを弱めて通さない。
+いずれの変更も元に戻して、同じコマンドが成功することを確認する。失敗しなかったら、チェックがその性質を見ていない。プロパティを弱めて通さない。ボットの `catch_up` を印ごとに分けると、このコマンドは成功したままになる。その失敗は `pnpm verify:web-mcp` の `catch_up valid input did not call catchUp once` である。
 
 ## 見ていないもの
 
-画面、TanStack DB、HTTP、Basic auth、検索の本文、Memo 単体の編集と削除、`insertTracks` と `insertSources`、プロセスをまたいだ書き込み、リモート Turso。詳細を開いても Unread のまま、という画面の操作は e2e が見る。ここでの読み直しは `select` が行を変えないことだけである。
+画面、TanStack DB、HTTP、Basic auth、検索の本文、Memo 単体の編集と削除、`saveTrack` と `saveSource`、プロセスをまたいだ書き込み、リモート Turso。詳細を開いても Unread のまま、という画面の操作は e2e が見る。ここでの読み直しは `select` が行を変えないことだけである。ボットの入力拒否、扉の回数、無い id の `catch_up` が先の行を Caught up にしないことは `pnpm verify:web-mcp` が見る。

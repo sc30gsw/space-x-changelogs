@@ -44,6 +44,50 @@ const own = (value: object, key: string): unknown => {
   return Object.getOwnPropertyDescriptor(value, key)?.value;
 };
 
+const storeWriteNames = [
+  "catchUp",
+  "ingestEntry",
+  "removeEntries",
+  "removeMemos",
+  "saveMemo",
+  "saveSource",
+  "saveTrack",
+] as const;
+
+const bindingsOf = (body: string): string[] =>
+  body
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .toSorted();
+
+const registrarFailures = (projectRoot: string): string[] => {
+  const path = join(projectRoot, "src/features/bots/components/bot-tools.tsx");
+  if (!existsSync(path)) {
+    return ["missing src/features/bots/components/bot-tools.tsx"];
+  }
+  const text = readFileSync(path, "utf8");
+  const imported = text.match(
+    /import\s*\{([^}]+)\}\s*from\s*"\.\.\/\.\.\/\.\.\/stores\/changelog"/u,
+  );
+  const names = imported?.[1] === undefined ? undefined : bindingsOf(imported[1]);
+  const expected = [...storeWriteNames].toSorted();
+  if (names === undefined || names.join() !== expected.join()) {
+    return ["src/features/bots/components/bot-tools.tsx does not import the seven store writes"];
+  }
+  const doors = text.match(/const doors = \{([\s\S]*?)\};/u);
+  const bound = doors?.[1] === undefined ? undefined : bindingsOf(doors[1]);
+  if (bound === undefined || bound.join() !== expected.join()) {
+    return ["src/features/bots/components/bot-tools.tsx does not pass the seven store writes"];
+  }
+  const optionsAt = text.indexOf('import "../utils/web-model-context"');
+  const globalAt = text.indexOf('import "@mcp-b/global"');
+  if (optionsAt === -1 || globalAt === -1 || optionsAt > globalAt) {
+    return ["src/features/bots/components/bot-tools.tsx loads @mcp-b/global before its options"];
+  }
+  return [];
+};
+
 const packageFailures = (projectRoot: string): string[] => {
   const path = join(projectRoot, "package.json");
   if (!existsSync(path)) {
@@ -101,7 +145,11 @@ export const scanWriteDoors = (projectRoot: string): WriteDoorReport => {
       }
     }
   }
-  failures.push(...packageFailures(projectRoot), ...workflowFailures(projectRoot));
+  failures.push(
+    ...registrarFailures(projectRoot),
+    ...packageFailures(projectRoot),
+    ...workflowFailures(projectRoot),
+  );
   return { failures, files: files.length };
 };
 
